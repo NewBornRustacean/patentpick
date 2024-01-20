@@ -1,2 +1,2 @@
 # paperwing
-a simple mailing service to deliver papers from arxiv.
+a simple mailing service to deliver summary of patents from uspto
