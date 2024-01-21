@@ -16,3 +16,4 @@
 ### Retriever(Recommender)
 - search/recommendation from patent database
 ## Diagram
+![img.png](images/diagram_sketch.png)
