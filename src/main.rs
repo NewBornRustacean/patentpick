@@ -1,31 +1,38 @@
-use std::env;
-
-use lettre::transport::smtp::authentication::Credentials;
-use lettre::{Message, SmtpTransport, Transport};
+mod emails;
+use emails::{Subscriber, PatentApplicationContent};
 
 fn main() {
-    let brevo_key = env::var("BREVO_KEY").unwrap();
-    let email_from:&str = "huiseomkim@gmail.com";
-    let host:&str = "smtp-relay.sendinblue.com";
-    let email_to :&str = "huiseomkim@gmail.com";
+    let mut subscriber_seom =Subscriber::new("SeomKim".to_string(), "huiseomkim@gmail.com".to_string(), None);
 
-    let email:Message = Message::builder()
-        .from(email_from.parse().unwrap())
-        .to(email_to.parse().unwrap())
-        .subject("test to send an email")
-        .body("Hello world! go go patent pick!".to_string())
-        .unwrap();
+    let mut mock_results = Vec::new();
+    mock_results.push(emails::PatentApplicationContent::new(
+        "Rapid transformation of monocot leaf explants".to_string(),
+        "https://patents.google.com/patent/US20240002870A1/en?oq=US+20240002870+A1".to_string())
+    );
 
-    let mailer:SmtpTransport = SmtpTransport::relay(&host)
-        .unwrap()
-        .credentials(Credentials::new(
-            email_from.to_string(), brevo_key.to_string(),
-        ))
-        .build();
+    mock_results.push(emails::PatentApplicationContent::new(
+        "PYRIDO[2,3-D]PYRIMIDIN-4-AMINES AS SOS1 INHIBITORS".to_string(),
+        "https://patents.google.com/patent/US20230357239A1/en?oq=US+20230357239+A1".to_string())
+    );
 
-    match mailer.send(&email) {
-        Ok(_) => println!("your email sent properly!"),
-        Err(e) => println!("couldn't send email {:?}", e),
-    }
+    mock_results.push(emails::PatentApplicationContent::new(
+        "PRIME EDITING GUIDE RNAS, COMPOSITIONS THEREOF, AND METHODS OF USING THE SAME".to_string(),
+        "https://patents.google.com/patent/US20230357766A1/en?oq=US+20230357766+A1".to_string())
+    );
+
+    mock_results.push(emails::PatentApplicationContent::new(
+        "IMAGE SENSOR".to_string(),
+        "https://patents.google.com/patent/US20230352510A1/en?oq=US+20230352510+A1".to_string())
+    );
+
+    mock_results.push(emails::PatentApplicationContent::new(
+        "Expressing Multicast Groups Using Weave Traits".to_string(),
+        "https://patents.google.com/patent/US20230336371A1/en?oq=US+20230336371+A1".to_string())
+    );
+
+    subscriber_seom.compose_html(&mock_results).send_email().unwrap();
+
+
+
 
 }
