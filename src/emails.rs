@@ -35,7 +35,7 @@ impl Subscriber {
         Subscriber { name, email, html_to_send}
     }
 
-    pub fn compose_html(mut self, applications: &Vec<PatentApplicationContent>) -> Self {
+    pub fn compose_html(&mut self, applications: &Vec<PatentApplicationContent>) -> &Self {
         // Create the html we want to send.
         let html = html! {
             head {
@@ -137,7 +137,6 @@ mod tests {
 
         subscriber_seollem.compose_html(&applications);
         let html = subscriber_seollem.html_to_send.unwrap();
-
         fs::write("test.html",html.into_string()).expect("unable to write file");
     }
 }
