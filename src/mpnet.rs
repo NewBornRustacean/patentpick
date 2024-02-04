@@ -1,5 +1,5 @@
 use candle_core::{shape::Dim, DType, Device, Result, Tensor};
-use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, embedding, layer_norm, Module};
+use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, embedding, layer_norm, Module, Linear, linear};
 use serde::Deserialize;
 
 // MPNetModel(
@@ -55,7 +55,7 @@ pub struct MPNetConfig {
     layer_norm_eps: f64,
     max_position_embeddings: usize,
     model_type: String,
-    num_attention_heads: u32,
+    num_attention_heads: usize,
     num_hidden_layers: u32,
     pad_token_id: u32,
     relative_attention_num_buckets: u32,
@@ -111,6 +111,48 @@ impl Default for PoolingConfig{
         }
     }
 }
+
+pub struct MPNetSelfAttention{
+    num_attention_heads: usize,
+    attention_head_size: usize,
+    q: Linear,
+    k: Linear,
+    v: Linear,
+    o: Linear,
+    dropout: Dropout,
+}
+
+impl MPNetSelfAttention{
+    pub fn load(vb: VarBuilder, config: &MPNetConfig) -> Result<Self>{
+        if config.hidden_size % config.num_attention_heads != 0 {
+            panic!("The hidden size ({}) is not a multiple of the number of attention heads ({})",
+                   config.hidden_size, config.num_attention_heads);
+        }
+
+        let num_attention_heads = config.num_attention_heads;
+        let attention_head_size = config.hidden_size / config.num_attention_heads;
+        let all_head_size = num_attention_heads * attention_head_size;
+
+        let dropout = Dropout::new(config.attention_probs_dropout_prob);
+
+        let q = linear(config.hidden_size, all_head_size, vb.pp("query"))?;
+        let k = linear(config.hidden_size, all_head_size, vb.pp("key"))?;
+        let v = linear(config.hidden_size, all_head_size, vb.pp("value"))?;
+        let o = linear(config.hidden_size, config.hidden_size,vb.pp("output"))?;
+
+        Ok(Self{
+            num_attention_heads:config.num_attention_heads,
+            attention_head_size,
+            q,
+            k,
+            v,
+            o,
+            dropout,
+        })
+    }
+}
+
+
 
 pub struct MPNetEmbeddings {
     word_embeddings: Embedding,
