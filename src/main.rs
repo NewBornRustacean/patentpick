@@ -1,5 +1,4 @@
 mod emails;
-mod models;
 
 use emails::{Subscriber, PatentApplicationContent};
 

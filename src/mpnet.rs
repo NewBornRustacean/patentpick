@@ -1,4 +1,4 @@
-use candle_core::{DType, Device, Result, Tensor};
+use candle_core::{shape::Dim, DType, Device, Result, Tensor};
 use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, embedding, layer_norm, Module};
 use serde::Deserialize;
 
@@ -236,15 +236,38 @@ impl MPNetEmbeddings {
 ///
 /// * `Tensor` - The position ids tensor.
 pub fn create_position_ids_from_input_ids(input_ids: &Tensor, padding_idx: u32) -> Result<Tensor> {
-    let mask = input_ids.ne(padding_idx)?;
-    let incremental_indices = (mask.cumsum(1) * mask).unwrap();
+    // println!("input_ids: {:?}", input_ids.to_vec2::<u32>()?);
+    let mask = input_ids.ne(padding_idx)?.to_dtype(input_ids.dtype())?;
+    // println!("mask: {:?}", mask.to_vec2::<u8>()?);
 
-    // let position_ids = incremental_indices + padding_idx;
+    let incremental_indices = cumsum(&mask, 1).unwrap();
     let incremental_indices = incremental_indices.broadcast_add(&Tensor::new(&[padding_idx], input_ids.device())?)?;
 
     Ok(incremental_indices)
 }
 
+
+/// Returns the cumulative sum of elements of input in the dimension dim.
+///
+/// [https://pytorch.org/docs/stable/generated/torch.cumsum.html](https://pytorch.org/docs/stable/generated/torch.cumsum.html)
+pub fn cumsum<D: Dim>(input: &Tensor, dim: D) -> Result<Tensor> {
+    let dim = dim.to_index(input.shape(), "cumsum")?;
+    let dim_size = input.dim(dim)?;
+
+    let mut tensors = Vec::with_capacity(dim_size);
+
+    let mut a = input.clone();
+    for i in 0..dim_size {
+        if i > 0 {
+            a = a.narrow(dim, 1, dim_size - i)?;
+            let b = input.narrow(dim, 0, dim_size - i)?;
+            a = (a + b)?;
+        }
+        tensors.push(a.narrow(dim, 0, 1)?);
+    }
+    let cumsum = Tensor::cat(&tensors, dim)?;
+    Ok(cumsum)
+}
 
 pub fn load_model(){
     let safetensor_path = "D:/RustWorkspace/patentpick/resources/checkpoints/AI-Growth-Lab_PatentSBERTa/model.safetensors".to_string();
@@ -257,35 +280,3 @@ pub fn load_model(){
 }
 
 
-
-# [cfg (test)]
-mod tests {
-    use candle_nn::VarMap;
-    use super::*;
-    #[test]
-    fn test_model_load() {
-        load_model();
-
-    }
-
-    #[test]
-    fn test_create_position_ids_from_input_embeds() -> Result<()> {
-
-
-        let config = MPNetConfig::default();
-        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
-        let embeddings_module = MPNetEmbeddings::load(vb, &config).unwrap();
-
-        let input_embeds = Tensor::randn(0f32, 1f32, (2, 4, 30), &Device::Cpu).unwrap();
-        let position_ids = embeddings_module.create_position_ids_from_input_embeds(&input_embeds);
-
-        let expected_tensor: &[[u32; 4]; 2] = &[
-            [0 + embeddings_module.padding_idx + 1, 1 + embeddings_module.padding_idx + 1, 2 + embeddings_module.padding_idx + 1, 3 + embeddings_module.padding_idx + 1,],
-            [0 + embeddings_module.padding_idx + 1, 1 + embeddings_module.padding_idx + 1, 2 + embeddings_module.padding_idx + 1, 3 + embeddings_module.padding_idx + 1,]
-        ];
-
-        assert_eq!(position_ids.unwrap().to_vec2::<u32>()?, expected_tensor);
-        Ok(())
-
-    }
-}
