@@ -150,6 +150,16 @@ impl MPNetSelfAttention{
             dropout,
         })
     }
+
+    fn transpose_for_scores(&self, xs: &Tensor) -> Result<Tensor> {
+        let mut new_x_shape = xs.dims().to_vec();
+        new_x_shape.pop();
+        new_x_shape.push(self.num_attention_heads);
+        new_x_shape.push(self.attention_head_size);
+
+        let xs = xs.reshape(new_x_shape.as_slice())?.transpose(1, 2)?;
+        xs.contiguous()
+    }
 }
 
 
@@ -322,3 +332,20 @@ pub fn load_model(){
 }
 
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_transpose_for_scores() {
+        // Create a VarStore
+        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
+        let config = MPNetConfig::default();
+
+        let mpnet_self_attention = MPNetSelfAttention::load(vb, &config).unwrap();
+        let xs = Tensor::randn(0f32, 1f32,(1, 2, config.hidden_size), &Device::Cpu).unwrap();
+
+        let result = mpnet_self_attention.transpose_for_scores(&xs).unwrap();
+        let expected_shape = vec![1, config.num_attention_heads, 2, config.hidden_size/config.num_attention_heads];
+        assert_eq!(result.shape().dims().to_vec(), expected_shape);
+    }
+}

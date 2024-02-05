@@ -1,7 +1,7 @@
 use candle_core::{shape::Dim, DType, Device, Result, Tensor};
 use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, embedding, layer_norm, Module};
 
-use patentpick::mpnet::{MPNetEmbeddings, MPNetConfig, create_position_ids_from_input_ids, cumsum, load_model};
+use patentpick::mpnet::{MPNetEmbeddings, MPNetConfig, MPNetSelfAttention, create_position_ids_from_input_ids, cumsum, load_model};
 
 
 #[test]
