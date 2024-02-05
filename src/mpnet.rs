@@ -112,6 +112,35 @@ impl Default for PoolingConfig{
     }
 }
 
+struct MPNetAttention {
+    self_attention : MPNetSelfAttention,
+    layer_norm: LayerNorm,
+    dropout: Dropout,
+}
+
+impl MPNetAttention {
+    fn load(vb: VarBuilder, config: &MPNetConfig) -> Result<Self> {
+        let self_attention = MPNetSelfAttention::load(vb.pp("self_attention"), config)?;
+        let layer_norm = layer_norm(config.hidden_size, config.layer_norm_eps, vb.pp("LayerNorm"))?;
+        let dropout = Dropout::new(config.hidden_dropout_prob);
+
+        Ok(Self {
+            self_attention,
+            layer_norm,
+            dropout,
+        })
+    }
+
+    fn forward(&self, hidden_states: &Tensor, is_train:bool) -> Result<Tensor> {
+        let self_outputs = self.self_attention.forward(hidden_states, is_train)?;
+
+        let dropped = self.dropout.forward(&self_outputs, is_train)?;
+        let attention_output = self.layer_norm.forward(&(dropped + hidden_states)?)?;
+
+        Ok(attention_output)
+    }
+}
+
 pub struct MPNetSelfAttention{
     num_attention_heads: usize,
     attention_head_size: usize,
@@ -380,6 +409,26 @@ mod tests {
 
         let result = mpnet_self_attention.forward(&hidden_states, false);
 
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert_eq!(output.dims().to_vec(), &[1, 2, config.hidden_size]);
+    }
+
+    #[test]
+    fn test_attention_forward() {
+        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
+        let config = MPNetConfig::default();
+
+        // Create an instance of MPNetAttention
+        let mpnet_attention = MPNetAttention::load(vb, &config).unwrap();
+
+        // Create a Tensor for hidden_states
+        let hidden_states = Tensor::randn(0f32, 1f32,(1, 2, config.hidden_size), &Device::Cpu).unwrap();
+
+        // Call the forward function
+        let result = mpnet_attention.forward(&hidden_states, false);
+
+        // Check if the output is Ok and if the size is as expected
         assert!(result.is_ok());
         let output = result.unwrap();
         assert_eq!(output.dims().to_vec(), &[1, 2, config.hidden_size]);
