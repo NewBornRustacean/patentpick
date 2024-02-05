@@ -112,6 +112,51 @@ impl Default for PoolingConfig{
     }
 }
 
+pub struct MPNetModel {
+    embeddings: MPNetEmbeddings,
+    encoder: MPNetEncoder,
+    pub device: Device,
+}
+
+impl MPNetModel {
+    pub fn load(vb: VarBuilder, config: &MPNetConfig) -> Result<Self> {
+        let (embeddings, encoder) = match (
+            MPNetEmbeddings::load(vb.pp("embeddings"), config), // MPNetEmbeddings(config)
+            MPNetEncoder::load(vb.pp("encoder"), config), // MPNetEncoder(config)
+        ) {
+            (Ok(embeddings), Ok(encoder)) => (embeddings, encoder),
+            (Err(err), _) | (_, Err(err)) => {
+                if let model_type= &config.model_type {
+
+                    if let (Ok(embeddings), Ok(encoder)) = (
+                        MPNetEmbeddings::load(vb.pp(&format!("{model_type}.embeddings")), config),
+                        MPNetEncoder::load(vb.pp(&format!("{model_type}.encoder")), config),
+                    ) {
+                        (embeddings, encoder)
+                    } else {
+                        return Err(err);
+                    }
+                } else {
+                    return Err(err);
+                }
+            }
+        };
+
+        Ok(Self {
+            embeddings,
+            encoder,
+            device: vb.device().clone(),
+        })
+    }
+
+    pub fn forward(&self, input_ids: &Tensor, is_train:bool) -> Result<Tensor> {
+        let embedding_output = self.embeddings .forward(input_ids, None, None, is_train)?;
+        let sequence_output = self.encoder.forward(&embedding_output, is_train)?;
+        Ok(sequence_output)
+    }
+}
+
+
 struct MPNetEncoder{
     layers: Vec<MPNetLayer>,
     relative_attention_bias: Embedding,
