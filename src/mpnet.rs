@@ -58,7 +58,7 @@ pub struct MPNetConfig {
     num_attention_heads: usize,
     num_hidden_layers: u32,
     pad_token_id: u32,
-    relative_attention_num_buckets: u32,
+    relative_attention_num_buckets: usize,
     torch_dtype: String,
     transformers_version: String,
     vocab_size: usize,
@@ -109,6 +109,37 @@ impl Default for PoolingConfig{
             pooling_mode_max_tokens: false,
             pooling_mode_mean_sqrt_len_tokens: false
         }
+    }
+}
+
+struct MPNetEncoder{
+    layers: Vec<MPNetLayer>,
+    relative_attention_bias: Embedding,
+}
+impl MPNetEncoder {
+    fn load(vb: VarBuilder, config: &MPNetConfig) -> Result<Self> {
+        // nn.ModuleList([MPNetLayer(config) for _ in range(config.num_hidden_layers)])
+        let layers = (0..config.num_hidden_layers)
+            .map(|index| MPNetLayer::load(vb.pp(&format!("layer.{index}")), config))
+            .collect::<Result<Vec<_>>>()?;
+
+        let relative_attention_bias = embedding(config.relative_attention_num_buckets, config.num_attention_heads,  vb.pp("relative_attention_bias"))?;
+        Ok(MPNetEncoder {
+            layers,
+            relative_attention_bias,
+        })
+    }
+
+    fn forward(&self, hidden_states: &Tensor, is_train:bool) -> Result<Tensor> {
+        let mut hidden_states = hidden_states.clone();
+
+        //for i, layer_module in enumerate(self.layer):
+        //  layer_outputs = layer_module(hidden_states)
+
+        for layer in self.layers.iter() {
+            hidden_states = layer.forward(&hidden_states, is_train)?;
+        }
+        Ok(hidden_states)
     }
 }
 
@@ -552,4 +583,19 @@ mod tests {
         let output = result.unwrap();
         assert_eq!(output.dims().to_vec(), &[10, 32, config.hidden_size]);
     }
+
+    fn test_mpnet_encoder_forward() {
+        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
+        let config = MPNetConfig::default();
+
+        let encoder = MPNetEncoder::load(vb, &config).unwrap();
+        let hidden_states = Tensor::randn(0f32, 1f32,(10, 32, config.hidden_size), &Device::Cpu).unwrap();
+
+        let result = encoder.forward(&hidden_states, false);
+
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert_eq!(output.dims().to_vec(), &[10, 32, config.hidden_size]);
+    }
+
 }
