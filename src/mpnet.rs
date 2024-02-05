@@ -160,6 +160,28 @@ impl MPNetSelfAttention{
         let xs = xs.reshape(new_x_shape.as_slice())?.transpose(1, 2)?;
         xs.contiguous()
     }
+
+    fn forward(&self, hidden_states: &Tensor, is_train:bool) -> Result<Tensor> {
+        let query_layer = self.q.forward(hidden_states)?;
+        let key_layer = self.k.forward(hidden_states)?;
+        let value_layer = self.v.forward(hidden_states)?;
+
+        let query_layer = self.transpose_for_scores(&query_layer)?;
+        let key_layer = self.transpose_for_scores(&key_layer)?;
+        let value_layer = self.transpose_for_scores(&value_layer)?;
+
+        let attention_scores = query_layer.matmul(&key_layer.t()?)?;
+        let attention_scores = (attention_scores / (self.attention_head_size as f64).sqrt())?;
+        let attention_probs = {candle_nn::ops::softmax(&attention_scores, candle_core::D::Minus1)?};
+        let attention_probs = self.dropout.forward(&attention_probs, is_train)?;
+
+        let context_layer = attention_probs.matmul(&value_layer)?;
+        let context_layer = context_layer.transpose(1, 2)?.contiguous()?;
+        let context_layer = context_layer.flatten_from(candle_core::D::Minus2)?;
+        let output = self.o.forward(&context_layer)?;
+
+        Ok(output)
+    }
 }
 
 
@@ -337,7 +359,6 @@ mod tests {
     use super::*;
     #[test]
     fn test_transpose_for_scores() {
-        // Create a VarStore
         let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
         let config = MPNetConfig::default();
 
@@ -347,5 +368,20 @@ mod tests {
         let result = mpnet_self_attention.transpose_for_scores(&xs).unwrap();
         let expected_shape = vec![1, config.num_attention_heads, 2, config.hidden_size/config.num_attention_heads];
         assert_eq!(result.shape().dims().to_vec(), expected_shape);
+    }
+
+    #[test]
+    fn test_self_attention_forward() {
+        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
+        let config = MPNetConfig::default();
+
+        let mpnet_self_attention = MPNetSelfAttention::load(vb, &config).unwrap();
+        let hidden_states = Tensor::randn(0f32, 1f32,(1, 2, config.hidden_size), &Device::Cpu).unwrap();
+
+        let result = mpnet_self_attention.forward(&hidden_states, false);
+
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert_eq!(output.dims().to_vec(), &[1, 2, config.hidden_size]);
     }
 }
