@@ -1,5 +1,5 @@
 use candle_core::{shape::Dim, DType, Device, Result, Tensor};
-use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, embedding, layer_norm, Module, Linear, linear};
+use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, Activation, embedding, layer_norm, Module, Linear, linear};
 use serde::Deserialize;
 
 // MPNetModel(
@@ -51,7 +51,7 @@ pub struct MPNetConfig {
     hidden_dropout_prob: f32,
     hidden_size: usize,
     initializer_range: f64,
-    intermediate_size: u32,
+    intermediate_size: usize,
     layer_norm_eps: f64,
     max_position_embeddings: usize,
     model_type: String,
@@ -112,6 +112,27 @@ impl Default for PoolingConfig{
     }
 }
 
+struct MPNetIntermediate {
+    dense: Linear,
+    intermediate_act: Activation,
+}
+
+impl MPNetIntermediate {
+    fn load(vb: VarBuilder, config: &MPNetConfig) -> Result<Self> {
+        // nn.Linear(config.hidden_size, config.intermediate_size)
+        let dense = linear(config.hidden_size, config.intermediate_size, vb.pp("dense"))?;
+        Ok(Self {
+            dense,
+            intermediate_act: Activation::Gelu,
+        })
+    }
+
+    fn forward(&self, hidden_states: &Tensor) -> Result<Tensor> {
+        let hidden_states = self.dense.forward(hidden_states)?;
+        let ys = self.intermediate_act.forward(&hidden_states)?;
+        Ok(ys)
+    }
+}
 struct MPNetAttention {
     self_attention : MPNetSelfAttention,
     layer_norm: LayerNorm,
@@ -419,18 +440,30 @@ mod tests {
         let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
         let config = MPNetConfig::default();
 
-        // Create an instance of MPNetAttention
         let mpnet_attention = MPNetAttention::load(vb, &config).unwrap();
 
-        // Create a Tensor for hidden_states
         let hidden_states = Tensor::randn(0f32, 1f32,(1, 2, config.hidden_size), &Device::Cpu).unwrap();
 
-        // Call the forward function
         let result = mpnet_attention.forward(&hidden_states, false);
 
         // Check if the output is Ok and if the size is as expected
         assert!(result.is_ok());
         let output = result.unwrap();
         assert_eq!(output.dims().to_vec(), &[1, 2, config.hidden_size]);
+    }
+
+    #[test]
+    fn test_intermediate_forward() {
+        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
+        let config = MPNetConfig::default();
+
+        let mpnet_intermediate = MPNetIntermediate::load(vb, &config).unwrap();
+        let hidden_states = Tensor::randn(0f32, 1f32,(1, 2, config.hidden_size), &Device::Cpu).unwrap();
+
+        let result = mpnet_intermediate.forward(&hidden_states);
+
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert_eq!(output.dims().to_vec(), &[1, 2, config.intermediate_size]);
     }
 }
