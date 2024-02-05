@@ -1,4 +1,5 @@
 mod emails;
+
 use emails::{Subscriber, PatentApplicationContent};
 
 fn main() {
