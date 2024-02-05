@@ -112,6 +112,34 @@ impl Default for PoolingConfig{
     }
 }
 
+struct MPNetLayer {
+    attention: MPNetAttention,
+    intermediate: MPNetIntermediate,
+    output: MPNetOutput,
+}
+
+impl MPNetLayer {
+    fn load(vb: VarBuilder, config: &MPNetConfig) -> Result<Self> {
+        let attention = MPNetAttention::load(vb.pp("attention"), config)?;
+        let intermediate = MPNetIntermediate::load(vb.pp("intermediate"), config)?;
+        let output = MPNetOutput::load(vb.pp("output"), config)?;
+        Ok(Self {
+            attention,
+            intermediate,
+            output,
+        })
+    }
+
+    fn forward(&self, hidden_states: &Tensor, is_train:bool) -> Result<Tensor> {
+        let attention_output = self.attention.forward(hidden_states, is_train)?;
+        let intermediate_output = self.intermediate.forward(&attention_output)?;
+        let layer_output = self
+            .output
+            .forward(&intermediate_output, &attention_output, is_train)?;
+        Ok(layer_output)
+    }
+}
+
 struct MPNetOutput {
     dense: Linear,
     layer_norm: LayerNorm,
@@ -511,4 +539,17 @@ mod tests {
         assert_eq!(output.dims().to_vec(), &[1, 2, config.hidden_size]);
     }
 
+    fn test_mpnet_layer_forward() {
+        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
+        let config = MPNetConfig::default();
+
+        let mpnet_layer = MPNetLayer::load(vb, &config).unwrap();
+        let hidden_states = Tensor::randn(0f32, 1f32,(10, 32, config.hidden_size), &Device::Cpu).unwrap();
+
+        let result = mpnet_layer.forward(&hidden_states, false);
+
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert_eq!(output.dims().to_vec(), &[10, 32, config.hidden_size]);
+    }
 }
