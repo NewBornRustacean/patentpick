@@ -112,6 +112,35 @@ impl Default for PoolingConfig{
     }
 }
 
+struct MPNetOutput {
+    dense: Linear,
+    layer_norm: LayerNorm,
+    dropout: Dropout,
+}
+
+impl MPNetOutput {
+    fn load(vb: VarBuilder, config: &MPNetConfig) -> Result<Self> {
+        let dense = linear(config.intermediate_size, config.hidden_size, vb.pp("dense"))?;
+        let layer_norm = layer_norm(
+            config.hidden_size,
+            config.layer_norm_eps,
+            vb.pp("LayerNorm"),
+        )?;
+        let dropout = Dropout::new(config.hidden_dropout_prob);
+        Ok(Self {
+            dense,
+            layer_norm,
+            dropout,
+        })
+    }
+
+    fn forward(&self, hidden_states: &Tensor, input_tensor: &Tensor, is_train:bool) -> Result<Tensor> {
+        let hidden_states = self.dense.forward(hidden_states)?;
+        let hidden_states = self.dropout.forward(&hidden_states, is_train)?;
+        self.layer_norm.forward(&(hidden_states + input_tensor)?)
+    }
+}
+
 struct MPNetIntermediate {
     dense: Linear,
     intermediate_act: Activation,
@@ -466,4 +495,20 @@ mod tests {
         let output = result.unwrap();
         assert_eq!(output.dims().to_vec(), &[1, 2, config.intermediate_size]);
     }
+
+    fn test_output_forward() {
+        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
+        let config = MPNetConfig::default();
+
+        let mpnet_output = MPNetOutput::load(vb, &config).unwrap();
+        let hidden_states = Tensor::randn(0f32, 1f32,(1, 2, config.intermediate_size), &Device::Cpu).unwrap();
+        let input_tensor = Tensor::randn(0f32, 1f32,(1, 2, config.hidden_size), &Device::Cpu).unwrap();
+
+        let result = mpnet_output.forward(&hidden_states, &input_tensor, false);
+
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert_eq!(output.dims().to_vec(), &[1, 2, config.hidden_size]);
+    }
+
 }
