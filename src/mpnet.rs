@@ -73,14 +73,11 @@ use serde_json::from_reader;
 ///
 /// ```plaintext
 /// use patentpick::mpnet::load_model;
-/// let (model, tokenizer) = load_model("/path/to/model/and/tokenizer").unwrap();
+/// let (model, tokenizer, pooler) = load_model("/path/to/model/and/tokenizer").unwrap();
 /// ```
-pub fn load_model(path_to_check_points_folder:String) -> Result<(MPNetModel, Tokenizer)>{
+pub fn load_model(path_to_check_points_folder:String) -> Result<(MPNetModel, Tokenizer, MPNetPooler)>{
     // Construct the paths to the weight and tokenizer files
-    let path_to_torch_weights = Path::new(&path_to_check_points_folder).join("pytorch_model.bin");
     let path_to_safetensors = Path::new(&path_to_check_points_folder).join("model.safetensors");
-    // let path_to_weight = Path::new(&path_to_check_points_folder).join("model.safetensors");
-
     let path_to_tokenizer = Path::new(&path_to_check_points_folder).join("tokenizer.json");
     let path_to_config = Path::new(&path_to_check_points_folder).join("config.json");
 
@@ -93,12 +90,33 @@ pub fn load_model(path_to_check_points_folder:String) -> Result<(MPNetModel, Tok
     let vb = VarBuilder::from_tensors(weights, DType::F32, &Device::Cpu);
     let config = MPNetConfig::load(&path_to_config)?;
     let tokenizer = Tokenizer::from_file(path_to_tokenizer).unwrap();
+    let pooler=MPNetPooler::load(vb.clone(), &PoolingConfig::default())?;
     let model = MPNetModel::load(vb, &config)?;
 
-    Ok((model, tokenizer))
+    Ok((model, tokenizer, pooler))
 }
 
-pub fn get_embeddings(model:&MPNetModel, tokenizer: &Tokenizer, sentences: &Vec<&str>) -> Result<Tensor>{
+/// Returns the embeddings of the given sentences.
+///
+/// This function takes a model, a tokenizer, an optional pooler, and a vector of sentences,
+/// and returns a tensor of embeddings.
+///
+/// # Arguments
+///
+/// * `model` - A reference to an instance of `MPNetModel`.
+/// * `tokenizer` - A reference to an instance of `Tokenizer`.
+/// * `pooler` - An optional reference to an instance of `MPNetPooler`.
+/// * `sentences` - A reference to a vector of sentences.
+///
+/// # Returns
+///
+/// * `Result<Tensor>` - A `Result` which is `Ok` if the embeddings could be computed successfully.
+/// The `Err` variant contains an error message.
+///
+/// # Errors
+///
+/// This function will return an error if the tokenization or the forward pass of the model fails.
+pub fn get_embeddings(model:&MPNetModel, tokenizer: &Tokenizer, pooler:Option<&MPNetPooler>, sentences: &Vec<&str>) -> Result<Tensor>{
     let tokens = tokenizer.encode_batch(sentences.clone(), true).unwrap();
     let token_ids = tokens
         .iter()
@@ -108,10 +126,12 @@ pub fn get_embeddings(model:&MPNetModel, tokenizer: &Tokenizer, sentences: &Vec<
         })
         .collect::<Result<Vec<_>>>()?;
     let token_ids = Tensor::stack(&token_ids, 0)?;
-
     let embeddings = model.forward(&token_ids, false)?;
 
-    Ok(embeddings)
+    match pooler {
+        Some(pooler) => pooler.forward(&embeddings),
+        None => Ok(embeddings),
+    }
 }
 #[derive(Serialize, Deserialize)]
 pub struct MPNetConfig {
@@ -175,8 +195,9 @@ impl MPNetConfig {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct PoolingConfig{
-    word_embedding_dimension: u32,
+    word_embedding_dimension: usize,
     pooling_mode_cls_token: bool,
     pooling_mode_mean_tokens: bool,
     pooling_mode_max_tokens: bool,
@@ -193,6 +214,43 @@ impl Default for PoolingConfig{
             pooling_mode_max_tokens: false,
             pooling_mode_mean_sqrt_len_tokens: false
         }
+    }
+}
+impl PoolingConfig {
+    pub fn load(path: &PathBuf) -> Result<Self> {
+        // Open the file in read-only mode.
+        let file = File::open(path)?;
+        let reader = io::BufReader::new(file);
+
+        // Deserialize the JSON string into an instance of `MPNetConfig`.
+        let config = from_reader(reader).unwrap();
+
+        Ok(config)
+    }
+}
+
+pub struct MPNetPooler{
+    dense: Linear,
+    activation: Activation,
+}
+
+impl MPNetPooler{
+    pub fn load(vb: VarBuilder, config: &PoolingConfig) -> Result<Self> {
+        let dense = linear(config.word_embedding_dimension, config.word_embedding_dimension,  vb.pp("pooler.dense"))?;
+        let activation = Activation::Gelu;
+        Ok(Self {
+            dense,
+            activation,
+        })
+    }
+
+    pub fn forward(&self, input_embeddings: &Tensor) -> Result<Tensor> {
+        let linear_out = self.dense.forward(input_embeddings)?;
+        let act_out = self.activation.forward(&linear_out)?;
+        let (_n_sentence, n_tokens, _hidden_size) = act_out.dims3()?;
+
+        let pooled_out = (act_out.sum(1)? / (n_tokens as f64))?;
+        Ok(pooled_out)
     }
 }
 
@@ -566,14 +624,7 @@ impl MPNetEmbeddings {
     }
 }
 
-pub struct MPNetPooler{
-    dense: Linear,
-    activation: Activation::Sigmoid,
-    ///     (pooler): MPNetPooler(
-    ///         (dense): Linear(in_features=768, out_features=768, bias=True)
-    ///         (activation): Tanh()
-    ///     )
-}
+
 
 /// Creates position ids from the input ids.
 ///

@@ -1,7 +1,7 @@
 use candle_core::{DType, Device, Result, Tensor};
 use candle_nn::{VarBuilder,  Module};
 
-use patentpick::mpnet::{ MPNetEmbeddings, MPNetConfig, create_position_ids_from_input_ids, cumsum, load_model, get_embeddings, normalize_l2};
+use patentpick::mpnet::{MPNetEmbeddings, MPNetConfig, create_position_ids_from_input_ids, cumsum, load_model, get_embeddings, normalize_l2, PoolingConfig, MPNetPooler};
 
 
 #[test]
@@ -9,7 +9,7 @@ fn test_model_load() ->Result<()>{
     let HIDDEN_SIZE = 768 as usize;
     let path_to_checkpoints_folder = "D:/RustWorkspace/patentpick/resources/checkpoints/AI-Growth-Lab_PatentSBERTa".to_string();
 
-    let (model, mut tokenizer) = load_model(path_to_checkpoints_folder).unwrap();
+    let (model, mut tokenizer, pooler) = load_model(path_to_checkpoints_folder).unwrap();
 
     let input_ids = &[[0u32, 30500, 232, 328, 740, 1140, 12695, 69, 30237, 1588, 2]];
     let input_ids = Tensor::new(input_ids, &model.device).unwrap();
@@ -28,7 +28,7 @@ fn test_model_load() ->Result<()>{
 fn test_get_embeddings() ->Result<()>{
     let path_to_checkpoints_folder = "D:/RustWorkspace/patentpick/resources/checkpoints/AI-Growth-Lab_PatentSBERTa".to_string();
 
-    let (model, mut tokenizer) = load_model(path_to_checkpoints_folder).unwrap();
+    let (model, mut tokenizer, pooler) = load_model(path_to_checkpoints_folder).unwrap();
 
     let sentences = vec![
         "an invention that targets GLP-1",
@@ -40,14 +40,8 @@ fn test_get_embeddings() ->Result<()>{
         "It's rainy. all day long.",
     ];
     let n_sentences = sentences.len();
+    let embeddings = get_embeddings(&model, &tokenizer, Some(&pooler), &sentences).unwrap();
 
-    let embeddings = get_embeddings(&model, &tokenizer, &sentences).unwrap();
-
-    // Apply some avg-pooling by taking the mean embedding value for all tokens (including padding)
-    let (_n_sentence, n_tokens, _hidden_size) = embeddings.dims3()?;
-    println!("_n_sentence, n_tokens, _hidden_size: {:?}, {:?}, {:?}", _n_sentence, n_tokens, _hidden_size);
-
-    let embeddings = (embeddings.sum(1)? / (n_tokens as f64))?;
     let l2norm_embeds = normalize_l2(&embeddings).unwrap();
     println!("pooled embeddings {:?}", l2norm_embeds.shape());
 
