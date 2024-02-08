@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::fs::File;
-use std::io::BufReader;
+use std::io;
 
 use candle_core::{shape::Dim, DType, Device, Result, Tensor};
 use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, Activation, embedding, layer_norm, Module, Linear, linear};
@@ -8,50 +8,74 @@ use tokenizers::{PaddingParams, Tokenizer};
 use serde::{Serialize, Deserialize};
 use serde_json::from_reader;
 
-
-
-
+/// Loads a model and tokenizer from the specified folder.
+///
+/// This function takes a path to a folder containing the model and tokenizer files.
+/// It constructs the paths to the weight and tokenizer files, ensures they exist,
+/// and then loads the weights, tokenizer, and model configuration.
+///
+/// # Model Structure
+///
+/// The `MPNetModel` structure is as follows:
+///
+/// ```plaintext
+/// MPNetModel(
+///     (embeddings): MPNetEmbeddings(
+///         (word_embeddings): Embedding(30527, 768, padding_idx=1)
+///         (position_embeddings): Embedding(512, 768, padding_idx=1)
+///         (LayerNorm): LayerNorm((768,), eps=1e-12, elementwise_affine=True)
+///         (dropout): Dropout(p=0.1, inplace=False)
+///     )
+///     (encoder): MPNetEncoder(
+///         (layer): ModuleList(
+///             (0-11): 12 x MPNetLayer(
+///                 (attention): MPNetAttention(
+///                     (attn): MPNetSelfAttention(
+///                         (q): Linear(in_features=768, out_features=768, bias=True)
+///                         (k): Linear(in_features=768, out_features=768, bias=True)
+///                         (v): Linear(in_features=768, out_features=768, bias=True)
+///                         (o): Linear(in_features=768, out_features=768, bias=True)
+///                         (dropout): Dropout(p=0.1, inplace=False)
+///                     )
+///                     (LayerNorm): LayerNorm((768,), eps=1e-12, elementwise_affine=True)
+///                     (dropout): Dropout(p=0.1, inplace=False)
+///              )
+///                 (intermediate): MPNetIntermediate(
+///                     (dense): Linear(in_features=768, out_features=3072, bias=True)
+///                     (intermediate_act_fn): GELUActivation()
+///                     )
+///                 (output): MPNetOutput(
+///                     (dense): Linear(in_features=3072, out_features=768, bias=True)
+///                     (LayerNorm): LayerNorm((768,), eps=1e-12, elementwise_affine=True)
+///                     (dropout): Dropout(p=0.1, inplace=False)
+///                 )
+///             )
+///         )
+///         (relative_attention_bias): Embedding(32, 12)
+///     )
+///     (pooler): MPNetPooler(
+///         (dense): Linear(in_features=768, out_features=768, bias=True)
+///         (activation): Tanh()
+///     )
+/// )
+/// ```
+///
+/// # Arguments
+///
+/// * `path_to_check_points_folder` - A string that holds the path to the folder containing the model and tokenizer files.
+///
+/// # Returns
+///
+/// * `Ok((model, tokenizer))` - A tuple containing the loaded model and tokenizer.
+/// * `Err` - An error if the specified paths do not exist, or if there is an issue loading the weights, tokenizer, or model configuration.
+///
+/// # How to use
+///
+/// ```plaintext
+/// use patentpick::mpnet::load_model;
+/// let (model, tokenizer) = load_model("/path/to/model/and/tokenizer").unwrap();
+/// ```
 pub fn load_model(path_to_check_points_folder:String) -> Result<(MPNetModel, Tokenizer)>{
-// MPNetModel(
-//     (embeddings): MPNetEmbeddings(
-//         (word_embeddings): Embedding(30527, 768, padding_idx=1)
-//         (position_embeddings): Embedding(512, 768, padding_idx=1)
-//         (LayerNorm): LayerNorm((768,), eps=1e-12, elementwise_affine=True)
-//         (dropout): Dropout(p=0.1, inplace=False)
-//     )
-//     (encoder): MPNetEncoder(
-//         (layer): ModuleList(
-//             (0-11): 12 x MPNetLayer(
-//                 (attention): MPNetAttention(
-//                     (attn): MPNetSelfAttention(
-//                         (q): Linear(in_features=768, out_features=768, bias=True)
-//                         (k): Linear(in_features=768, out_features=768, bias=True)
-//                         (v): Linear(in_features=768, out_features=768, bias=True)
-//                         (o): Linear(in_features=768, out_features=768, bias=True)
-//                         (dropout): Dropout(p=0.1, inplace=False)
-//                     )
-//                     (LayerNorm): LayerNorm((768,), eps=1e-12, elementwise_affine=True)
-//                     (dropout): Dropout(p=0.1, inplace=False)
-//              )
-//                 (intermediate): MPNetIntermediate(
-//                     (dense): Linear(in_features=768, out_features=3072, bias=True)
-//                     (intermediate_act_fn): GELUActivation()
-//                     )
-//                 (output): MPNetOutput(
-//                     (dense): Linear(in_features=3072, out_features=768, bias=True)
-//                     (LayerNorm): LayerNorm((768,), eps=1e-12, elementwise_affine=True)
-//                     (dropout): Dropout(p=0.1, inplace=False)
-//                 )
-//             )
-//         )
-//         (relative_attention_bias): Embedding(32, 12)
-//     )
-//     (pooler): MPNetPooler(
-//         (dense): Linear(in_features=768, out_features=768, bias=True)
-//         (activation): Tanh()
-//     )
-// )
-
     // Construct the paths to the weight and tokenizer files
     let path_to_torch_weights = Path::new(&path_to_check_points_folder).join("pytorch_model.bin");
     let path_to_safetensors = Path::new(&path_to_check_points_folder).join("model.safetensors");
@@ -127,7 +151,7 @@ impl MPNetConfig {
     pub fn load(path: &PathBuf) -> Result<Self> {
         // Open the file in read-only mode.
         let file = File::open(path)?;
-        let reader = BufReader::new(file);
+        let reader = io::BufReader::new(file);
 
         // Deserialize the JSON string into an instance of `MPNetConfig`.
         let config = from_reader(reader).unwrap();
@@ -680,30 +704,4 @@ mod tests {
         let output = result.unwrap();
         assert_eq!(output.dims().to_vec(), &[10, 32, config.hidden_size]);
     }
-
-    #[test]
-    fn test_mpnet_model_forward(){
-        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
-        let config = MPNetConfig::default();
-
-        let model = MPNetModel::load(vb, &config).unwrap();
-        let hidden_states = Tensor::randn(0f32, 1f32,(10, 32, config.hidden_size), &Device::Cpu).unwrap();
-
-
-        for layer in model.encoder.layers.iter(){
-
-        }
-
-
-        // let result = model.forward(&hidden_states, false);
-
-        // for layer in model.encoder.layers.iter(){
-        //     println!("LayerName: {:?}, LayerType: {}", layer, layer.type_id())
-        // }
-
-        // assert!(result.is_ok());
-        // let output = result.unwrap();
-        // assert_eq!(output.dims().to_vec(), &[10, 32, config.hidden_size]);
-    }
-
 }
