@@ -1,7 +1,17 @@
+use std::path::{Path, PathBuf};
+use std::fs::File;
+use std::io::BufReader;
+
 use candle_core::{shape::Dim, DType, Device, Result, Tensor};
 use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, Activation, embedding, layer_norm, Module, Linear, linear};
-use serde::Deserialize;
+use tokenizers::{PaddingParams, Tokenizer};
+use serde::{Serialize, Deserialize};
+use serde_json::from_reader;
 
+
+
+
+pub fn load_model(path_to_check_points_folder:String) -> Result<(MPNetModel, Tokenizer)>{
 // MPNetModel(
 //     (embeddings): MPNetEmbeddings(
 //         (word_embeddings): Embedding(30527, 768, padding_idx=1)
@@ -41,6 +51,30 @@ use serde::Deserialize;
 //         (activation): Tanh()
 //     )
 // )
+
+    // Construct the paths to the weight and tokenizer files
+    let path_to_torch_weights = Path::new(&path_to_check_points_folder).join("pytorch_model.bin");
+    let path_to_safetensors = Path::new(&path_to_check_points_folder).join("model.safetensors");
+    // let path_to_weight = Path::new(&path_to_check_points_folder).join("model.safetensors");
+
+    let path_to_tokenizer = Path::new(&path_to_check_points_folder).join("tokenizer.json");
+    let path_to_config = Path::new(&path_to_check_points_folder).join("config.json");
+
+    // Ensure the paths exist
+    if !path_to_safetensors.exists() || !path_to_tokenizer.exists() || !path_to_config.exists(){
+        Err::<MPNetModel, _>(io::Error::new(io::ErrorKind::NotFound, "The specified paths do not exist."));
+    }
+
+    let weights = candle_core::safetensors::load(&path_to_safetensors, &Device::Cpu)?;
+    let vb = VarBuilder::from_tensors(weights, DType::F32, &Device::Cpu);
+    let config = MPNetConfig::load(&path_to_config)?;
+    let tokenizer = Tokenizer::from_file(path_to_tokenizer).unwrap();
+    let model = MPNetModel::load(vb, &config)?;
+
+    Ok((model, tokenizer))
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct MPNetConfig {
     _name_or_path: String,
     architectures: Vec<String>,
@@ -63,7 +97,6 @@ pub struct MPNetConfig {
     transformers_version: String,
     vocab_size: usize,
 }
-
 impl Default for MPNetConfig {
     fn default() -> Self {
         Self {
@@ -88,6 +121,18 @@ impl Default for MPNetConfig {
             transformers_version: "4.11.2".to_string(),
             vocab_size: 30527
         }
+    }
+}
+impl MPNetConfig {
+    pub fn load(path: &PathBuf) -> Result<Self> {
+        // Open the file in read-only mode.
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+
+        // Deserialize the JSON string into an instance of `MPNetConfig`.
+        let config = from_reader(reader).unwrap();
+
+        Ok(config)
     }
 }
 
@@ -121,8 +166,8 @@ pub struct MPNetModel {
 impl MPNetModel {
     pub fn load(vb: VarBuilder, config: &MPNetConfig) -> Result<Self> {
         let (embeddings, encoder) = match (
-            MPNetEmbeddings::load(vb.pp("embeddings"), config), // MPNetEmbeddings(config)
-            MPNetEncoder::load(vb.pp("encoder"), config), // MPNetEncoder(config)
+            MPNetEmbeddings::load(vb.pp("embeddings"), &config), // MPNetEmbeddings(config)
+            MPNetEncoder::load(vb.pp("encoder"), &config), // MPNetEncoder(config)
         ) {
             (Ok(embeddings), Ok(encoder)) => (embeddings, encoder),
             (Err(err), _) | (_, Err(err)) => {
@@ -267,26 +312,26 @@ impl MPNetIntermediate {
     }
 }
 struct MPNetAttention {
-    self_attention : MPNetSelfAttention,
+    attn : MPNetSelfAttention,
     layer_norm: LayerNorm,
     dropout: Dropout,
 }
 
 impl MPNetAttention {
     fn load(vb: VarBuilder, config: &MPNetConfig) -> Result<Self> {
-        let self_attention = MPNetSelfAttention::load(vb.pp("self_attention"), config)?;
+        let attn = MPNetSelfAttention::load(vb.pp("attn"), config)?;
         let layer_norm = layer_norm(config.hidden_size, config.layer_norm_eps, vb.pp("LayerNorm"))?;
         let dropout = Dropout::new(config.hidden_dropout_prob);
 
         Ok(Self {
-            self_attention,
+            attn,
             layer_norm,
             dropout,
         })
     }
 
     fn forward(&self, hidden_states: &Tensor, is_train:bool) -> Result<Tensor> {
-        let self_outputs = self.self_attention.forward(hidden_states, is_train)?;
+        let self_outputs = self.attn.forward(hidden_states, is_train)?;
 
         let dropped = self.dropout.forward(&self_outputs, is_train)?;
         let attention_output = self.layer_norm.forward(&(dropped + hidden_states)?)?;
@@ -318,10 +363,10 @@ impl MPNetSelfAttention{
 
         let dropout = Dropout::new(config.attention_probs_dropout_prob);
 
-        let q = linear(config.hidden_size, all_head_size, vb.pp("query"))?;
-        let k = linear(config.hidden_size, all_head_size, vb.pp("key"))?;
-        let v = linear(config.hidden_size, all_head_size, vb.pp("value"))?;
-        let o = linear(config.hidden_size, config.hidden_size,vb.pp("output"))?;
+        let q = linear(config.hidden_size, all_head_size, vb.pp("q"))?;
+        let k = linear(config.hidden_size, all_head_size, vb.pp("k"))?;
+        let v = linear(config.hidden_size, all_head_size, vb.pp("v"))?;
+        let o = linear(config.hidden_size, config.hidden_size,vb.pp("o"))?;
 
         Ok(Self{
             num_attention_heads:config.num_attention_heads,
@@ -526,19 +571,10 @@ pub fn cumsum<D: Dim>(input: &Tensor, dim: D) -> Result<Tensor> {
     Ok(cumsum)
 }
 
-pub fn load_model(){
-    let safetensor_path = "D:/RustWorkspace/patentpick/resources/checkpoints/AI-Growth-Lab_PatentSBERTa/model.safetensors".to_string();
-    // let api = Api::new().unwrap();
-    // let repo = api.model();
-
-    let weights = candle_core::safetensors::load(safetensor_path, &Device::Cpu);
-    println!("done!");
-
-}
-
-
 #[cfg(test)]
 mod tests {
+    use std::any::Any;
+    use std::fmt::Pointer;
     use super::*;
     #[test]
     fn test_transpose_for_scores() {
@@ -599,7 +635,7 @@ mod tests {
         let output = result.unwrap();
         assert_eq!(output.dims().to_vec(), &[1, 2, config.intermediate_size]);
     }
-
+    #[test]
     fn test_output_forward() {
         let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
         let config = MPNetConfig::default();
@@ -615,6 +651,7 @@ mod tests {
         assert_eq!(output.dims().to_vec(), &[1, 2, config.hidden_size]);
     }
 
+    #[test]
     fn test_mpnet_layer_forward() {
         let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
         let config = MPNetConfig::default();
@@ -629,6 +666,7 @@ mod tests {
         assert_eq!(output.dims().to_vec(), &[10, 32, config.hidden_size]);
     }
 
+    #[test]
     fn test_mpnet_encoder_forward() {
         let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
         let config = MPNetConfig::default();
@@ -641,6 +679,31 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
         assert_eq!(output.dims().to_vec(), &[10, 32, config.hidden_size]);
+    }
+
+    #[test]
+    fn test_mpnet_model_forward(){
+        let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
+        let config = MPNetConfig::default();
+
+        let model = MPNetModel::load(vb, &config).unwrap();
+        let hidden_states = Tensor::randn(0f32, 1f32,(10, 32, config.hidden_size), &Device::Cpu).unwrap();
+
+
+        for layer in model.encoder.layers.iter(){
+
+        }
+
+
+        // let result = model.forward(&hidden_states, false);
+
+        // for layer in model.encoder.layers.iter(){
+        //     println!("LayerName: {:?}, LayerType: {}", layer, layer.type_id())
+        // }
+
+        // assert!(result.is_ok());
+        // let output = result.unwrap();
+        // assert_eq!(output.dims().to_vec(), &[10, 32, config.hidden_size]);
     }
 
 }
