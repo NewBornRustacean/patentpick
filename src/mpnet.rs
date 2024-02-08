@@ -4,7 +4,7 @@ use std::io;
 
 use candle_core::{shape::Dim, DType, Device, Result, Tensor};
 use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, Activation, embedding, layer_norm, Module, Linear, linear};
-use tokenizers::{PaddingParams, Tokenizer};
+use tokenizers::Tokenizer;
 use serde::{Serialize, Deserialize};
 use serde_json::from_reader;
 
@@ -98,6 +98,21 @@ pub fn load_model(path_to_check_points_folder:String) -> Result<(MPNetModel, Tok
     Ok((model, tokenizer))
 }
 
+pub fn get_embeddings(model:&MPNetModel, tokenizer: &Tokenizer, sentences: &Vec<&str>) -> Result<Tensor>{
+    let tokens = tokenizer.encode_batch(sentences.clone(), true).unwrap();
+    let token_ids = tokens
+        .iter()
+        .map(|tokens| {
+            let tokens = tokens.get_ids().to_vec();
+            Ok(Tensor::new(tokens.as_slice(), &model.device)?)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let token_ids = Tensor::stack(&token_ids, 0)?;
+
+    let embeddings = model.forward(&token_ids, false)?;
+
+    Ok(embeddings)
+}
 #[derive(Serialize, Deserialize)]
 pub struct MPNetConfig {
     _name_or_path: String,
@@ -551,6 +566,15 @@ impl MPNetEmbeddings {
     }
 }
 
+pub struct MPNetPooler{
+    dense: Linear,
+    activation: Activation::Sigmoid,
+    ///     (pooler): MPNetPooler(
+    ///         (dense): Linear(in_features=768, out_features=768, bias=True)
+    ///         (activation): Tanh()
+    ///     )
+}
+
 /// Creates position ids from the input ids.
 ///
 /// # Arguments
@@ -593,6 +617,10 @@ pub fn cumsum<D: Dim>(input: &Tensor, dim: D) -> Result<Tensor> {
     }
     let cumsum = Tensor::cat(&tensors, dim)?;
     Ok(cumsum)
+}
+
+pub fn normalize_l2(v: &Tensor) -> Result<Tensor> {
+    Ok(v.broadcast_div(&v.sqr()?.sum_keepdim(1)?.sqrt()?)?)
 }
 
 #[cfg(test)]
