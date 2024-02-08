@@ -1,4 +1,5 @@
 mod emails;
+mod mpnet;
 
 use emails::{Subscriber, PatentApplicationContent};
 

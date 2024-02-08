@@ -1,12 +1,30 @@
-use candle_core::{shape::Dim, DType, Device, Result, Tensor};
-use candle_nn::{Embedding, LayerNorm, Dropout, VarBuilder, embedding, layer_norm, Module};
+use candle_core::{DType, Device, Result, Tensor};
+use candle_nn::{VarBuilder,  Module};
 
-use patentpick::mpnet::{MPNetEmbeddings, MPNetConfig, MPNetSelfAttention, create_position_ids_from_input_ids, cumsum, load_model};
+use patentpick::mpnet::{ MPNetEmbeddings, MPNetConfig, create_position_ids_from_input_ids, cumsum, load_model};
 
 
 #[test]
-fn test_model_load() {
-    load_model();
+fn test_model_load() ->Result<()>{
+    let HIDDEN_SIZE = 768 as usize;
+    fn round_to_decimal_places(n: f32, places: u32) -> f32 {
+        let multiplier: f32 = 10f32.powi(places as i32);
+        (n * multiplier).round() / multiplier
+    }
+
+    let path_to_checkpoints_folder = "D:/RustWorkspace/patentpick/resources/checkpoints/AI-Growth-Lab_PatentSBERTa".to_string();
+    let (model, mut tokenizer) = load_model(path_to_checkpoints_folder).unwrap();
+
+    let input_ids = &[[0u32, 30500, 232, 328, 740, 1140, 12695, 69, 30237, 1588, 2]];
+    let input_ids = Tensor::new(input_ids, &model.device).unwrap();
+
+    let output = model.forward(&input_ids, false)?;
+
+    let expected_shape = [1, 11, HIDDEN_SIZE];
+
+    assert_eq!(output.shape().dims(), &expected_shape);
+
+    Ok(())
 
 }
 
