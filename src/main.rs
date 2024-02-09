@@ -33,8 +33,4 @@ fn main() {
     );
 
     subscriber_seom.compose_html(&mock_results).send_email().unwrap();
-
-
-
-
 }
