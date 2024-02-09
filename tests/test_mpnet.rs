@@ -1,19 +1,15 @@
 use candle_core::{DType, Device, Result, Tensor};
 use candle_nn::{VarBuilder,  Module};
 
-use patentpick::mpnet::{ MPNetEmbeddings, MPNetConfig, create_position_ids_from_input_ids, cumsum, load_model};
+use patentpick::mpnet::{MPNetEmbeddings, MPNetConfig, create_position_ids_from_input_ids, cumsum, load_model, get_embeddings, normalize_l2, PoolingConfig, MPNetPooler};
 
 
 #[test]
 fn test_model_load() ->Result<()>{
     let HIDDEN_SIZE = 768 as usize;
-    fn round_to_decimal_places(n: f32, places: u32) -> f32 {
-        let multiplier: f32 = 10f32.powi(places as i32);
-        (n * multiplier).round() / multiplier
-    }
-
     let path_to_checkpoints_folder = "D:/RustWorkspace/patentpick/resources/checkpoints/AI-Growth-Lab_PatentSBERTa".to_string();
-    let (model, mut tokenizer) = load_model(path_to_checkpoints_folder).unwrap();
+
+    let (model, mut tokenizer, pooler) = load_model(path_to_checkpoints_folder).unwrap();
 
     let input_ids = &[[0u32, 30500, 232, 328, 740, 1140, 12695, 69, 30237, 1588, 2]];
     let input_ids = Tensor::new(input_ids, &model.device).unwrap();
@@ -29,9 +25,48 @@ fn test_model_load() ->Result<()>{
 }
 
 #[test]
+fn test_get_embeddings() ->Result<()>{
+    let path_to_checkpoints_folder = "D:/RustWorkspace/patentpick/resources/checkpoints/AI-Growth-Lab_PatentSBERTa".to_string();
+
+    let (model, mut tokenizer, pooler) = load_model(path_to_checkpoints_folder).unwrap();
+
+    let sentences = vec![
+        "an invention that targets GLP-1",
+        "new chemical that targets glucagon like peptide-1 ",
+        "de novo chemical that targets GLP-1",
+        "invention about GLP-1 receptor",
+        "new chemical synthesis for glp-1 inhibitors",
+        "It feels like I'm in America",
+        "It's rainy. all day long.",
+    ];
+    let n_sentences = sentences.len();
+    let embeddings = get_embeddings(&model, &tokenizer, Some(&pooler), &sentences).unwrap();
+
+    let l2norm_embeds = normalize_l2(&embeddings).unwrap();
+    println!("pooled embeddings {:?}", l2norm_embeds.shape());
+
+    let mut similarities = vec![];
+    for i in 0..n_sentences {
+        let e_i = l2norm_embeds.get(i)?;
+        for j in (i + 1)..n_sentences {
+            let e_j = l2norm_embeds.get(j)?;
+            let sum_ij = (&e_i * &e_j)?.sum_all()?.to_scalar::<f32>()?;
+            let sum_i2 = (&e_i * &e_i)?.sum_all()?.to_scalar::<f32>()?;
+            let sum_j2 = (&e_j * &e_j)?.sum_all()?.to_scalar::<f32>()?;
+            let cosine_similarity = sum_ij / (sum_i2 * sum_j2).sqrt();
+            similarities.push((cosine_similarity, i, j))
+        }
+    }
+    similarities.sort_by(|u, v| v.0.total_cmp(&u.0));
+    for &(score, i, j) in similarities[..5].iter() {
+        println!("score: {score:.2} '{}' '{}'", sentences[i], sentences[j])
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_create_position_ids_from_input_embeds() -> candle_core::Result<()> {
-
-
     let config = MPNetConfig::default();
     let vb = VarBuilder::zeros(DType::F32, &Device::Cpu);
     let embeddings_module = MPNetEmbeddings::load(vb, &config).unwrap();
@@ -77,3 +112,11 @@ fn test_cumsum() -> candle_core::Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_normalize_l2() {
+    let v = Tensor::new(&[[1f32, 2.0, 3.0, 4.0, 5.0]], &Device::Cpu).unwrap();
+    let result = normalize_l2(&v).unwrap();
+
+    let sum_of_squares = result.sqr().unwrap().sum(1).unwrap();
+    assert!((sum_of_squares.get(0).unwrap().to_vec0::<f32>().unwrap() - 1.0f32).abs() < 1e-5, "The tensor is not normalized");
+}
