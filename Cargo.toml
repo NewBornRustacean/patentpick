@@ -6,12 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.4.0" }
-candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.4.0" }
-hf-hub = { version = "0.3.2", features = ["tokio"] }
+tokio = {version = "1.36.0", features = ["full"]}
+serde = { version = "1.0.196", features = ["derive"] }
 lettre = "0.11.3"
 maud = "0.26.0"
-serde = { version = "1.0.196", features = ["derive"] }
 tokenizers = "0.15.1"
 serde_json = "1.0.113"
+mpnet-rs = "0.1.0"
+opensearch = "2.2.0"
+anyhow = "1.0.79"
 
+[features]
+exclude_from_ci = []

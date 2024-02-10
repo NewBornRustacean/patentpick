@@ -1,12 +1,14 @@
 use std::env;
+use std::path::PathBuf;
 
+use anyhow::{Result, Error};
 use lettre::{
     message::{header, MultiPart, SinglePart},
     Message, SmtpTransport, Transport,
 };
 use lettre::transport::smtp::authentication::Credentials;
-use maud::{html, PreEscaped};
-
+use maud::html;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub enum EmailError {
@@ -24,15 +26,17 @@ impl PatentApplicationContent {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Subscriber {
     pub name: String,
     pub email: String,
-    pub html_to_send: Option<PreEscaped<String>>,
+    pub search_queries: Vec<String>,
+    pub html_to_send: Option<String>,
 }
 
 impl Subscriber {
-    pub fn new(name: String, email: String, html_to_send:Option<PreEscaped<String>>) -> Self {
-        Subscriber { name, email, html_to_send}
+    pub fn new(name: String, email: String, search_queries:Vec<String>, html_to_send:Option<String>) -> Self {
+        Subscriber { name, email, search_queries, html_to_send}
     }
 
     pub fn compose_html(&mut self, applications: &Vec<PatentApplicationContent>) -> &Self {
@@ -60,7 +64,7 @@ impl Subscriber {
                 }
             }
         };
-        self.html_to_send=Some(html);
+        self.html_to_send=Some(html.into_string());
         self
 
     }
@@ -86,7 +90,7 @@ impl Subscriber {
                             .singlepart(
                                 SinglePart::builder()
                                     .header(header::ContentType::TEXT_HTML)
-                                    .body(html_to_send.clone().into_string()),
+                                    .body(html_to_send.clone()),
                             ),
                     )
                     .expect("failed to build email");
@@ -112,4 +116,11 @@ impl Subscriber {
             None => Err(EmailError::HtmlNotComposed),
         }
     }
+}
+
+pub fn get_subscribers(json_path:PathBuf) ->Result<Vec<Subscriber>, Error>{
+    let file = std::fs::File::open(json_path)?;
+    let subscribers: Vec<Subscriber> = serde_json::from_reader(file)?;
+
+    Ok(subscribers)
 }

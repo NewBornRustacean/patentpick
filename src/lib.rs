@@ -1,3 +1,2 @@
-pub mod mpnet;
-pub mod retrieve;
+pub mod opensearch_handler;
 pub mod emails;
