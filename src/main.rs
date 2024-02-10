@@ -1,10 +1,14 @@
 mod emails;
-mod mpnet;
 
 use emails::{Subscriber, PatentApplicationContent};
 
 fn main() {
-    let mut subscriber_seom =Subscriber::new("SeomKim".to_string(), "huiseomkim@gmail.com".to_string(), None);
+    let mut subscriber_seom =Subscriber::new(
+        "SeomKim".to_string(),
+        "huiseomkim@gmail.com".to_string(),
+        vec!["new chemical that targets glucagon like peptide-1".to_string()],
+        None
+    );
 
     let mut mock_results = Vec::new();
     mock_results.push(emails::PatentApplicationContent::new(

@@ -1,10 +1,16 @@
 use std::fs;
-use patentpick::emails::{PatentApplicationContent, Subscriber};
+use std::io::Write;
+use std::path::Path;
+use patentpick::emails::{PatentApplicationContent, Subscriber, get_subscribers};
 
 
 #[test]
 fn test_compose_html() {
-    let mut subscriber_seollem = Subscriber::new("Seollem".to_string(), "email_to_selloem@gmail.com".to_string(), None);
+    let mut subscriber_seollem = Subscriber::new(
+        "Seollem".to_string(),
+        "email_to_selloem@gmail.com".to_string(),
+        vec!["glp-1 inhibitor".to_string()],
+        None);
 
     let applications = vec![
         PatentApplicationContent {
@@ -19,5 +25,16 @@ fn test_compose_html() {
 
     subscriber_seollem.compose_html(&applications);
     let html = subscriber_seollem.html_to_send.unwrap();
-    fs::write("test.html",html.into_string()).expect("unable to write file");
+    fs::write("test.html",html).expect("unable to write file");
+}
+
+#[test]
+#[cfg(not(feature = "exclude_from_ci"))]
+fn test_get_subscribers(){
+    let json_path = Path::new(&"resources/subscribers/".to_string()).join("subscribers.json");
+    let subscribers = get_subscribers(json_path).unwrap();
+
+    for subs in subscribers{
+        println!("{:?}", subs);
+    }
 }
