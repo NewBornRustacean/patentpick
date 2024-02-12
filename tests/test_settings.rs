@@ -1,5 +1,4 @@
-use anyhow::Error;
-use config::{Config, ConfigError};
+use config::Config;
 use patentpick::settings::Settings;
 
 # [test]

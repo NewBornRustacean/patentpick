@@ -1,32 +1,64 @@
+use std::path::{Path, PathBuf};
+
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
+use anyhow::{Result, Error};
 use reqwest;
-use chrono::{Datelike, Utc, Weekday};
-use patentpick::settings;
+use chrono::{Datelike, Weekday, NaiveDate};
 
+pub async fn download_weekly_fulltext(uspto_url:&str, uspto_year:&str, save_dir:&str, today_utc: &NaiveDate)->Result<(), Error>{
+    let last_thursday_date = find_last_thursday(today_utc);
+    let download_url = format_uspto_full_path(uspto_url, uspto_year, last_thursday_date);
+    let download_url_str = download_url.to_str().unwrap();
+    let filename = download_url.file_name().unwrap().to_str().unwrap();
+    let ipa_file_path = Path::new(save_dir).join(filename);
 
-pub fn download_weekly_fulltext() {
-    let now_utc = Utc::now();
-    let today_utc = now_utc.date_naive();
-    let thursday = today_utc.with_weekday(Weekday::Thu);
+    if !ipa_file_path.exists(){
+        println!("--there is NO file at: {:?}", ipa_file_path);
+        println!("--Start to Download..");
 
-    // Format the date as YYMMDD
-    let date_str = format!("{:02}{:02}{:02}", thursday.year() % 100, thursday.month(), thursday.day());
+        let response = reqwest::get(download_url_str).await?;
+        if response.status().is_success() {
+            let bytes = response.bytes().await?;
 
-    // Construct the file name and the download URL
-    // let file_name = format!("ipa{}.zip", date_str);
-    // let download_url = format!("{}{}", BASE_URL, file_name);
-    //
-    // // Send a blocking GET request to the download URL
-    // let resp = reqwest::blocking::get(&download_url).expect("request failed");
-    //
-    // // Create the directory to save the file if it does not exist
-    // std::fs::create_dir_all(SAVE_DIR).expect("failed to create directory");
-    //
-    // // Create the file in the directory
-    // let mut out = File::create(format!("{}/{}", SAVE_DIR, file_name)).expect("failed to create file");
-    //
-    // // Copy the response body to the file
-    // copy(&mut resp.bytes().expect("failed to read bytes").as_ref(), &mut out).expect("failed to copy content");
+            let mut file = File::create(&ipa_file_path).await.unwrap();
+            file.write_all(&bytes).await.unwrap();
+
+            println!("File downloaded successfully to {:?}", ipa_file_path);
+        } else {
+            println!("Failed to download the file. Status: {}", response.status());
+        }
+    }
+
+    Ok(())
 }
 
+pub fn format_uspto_full_path(uspto_url:&str, uspto_year:&str, last_thursday_date:NaiveDate)->PathBuf{
+    // Format the date as needed
+    let mut file_name ="ipa".to_string();
+    let formatted_date = last_thursday_date.format("%y%m%d").to_string();
+    file_name.push_str(&formatted_date);
+    file_name.push_str(".zip");
+
+    // Construct the full URL path
+    let mut full_path = PathBuf::from(&uspto_url);
+    full_path.push(uspto_year);
+    full_path.push(file_name);
+
+    return full_path;
+}
+
+pub fn find_last_thursday(today: &NaiveDate) -> NaiveDate {
+    let mut current_date = *today;
+    loop {
+        if current_date.weekday() == Weekday::Thu {
+            break;
+        }
+        current_date = current_date.pred_opt().unwrap();
+    }
+    current_date
+}
 
 pub fn parse_xml(){}
+
+
