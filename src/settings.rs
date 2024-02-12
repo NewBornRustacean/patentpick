@@ -1,10 +1,7 @@
+use std::path::Path;
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
-use anyhow::{Result, Error};
-use std::fmt;
-
-const CONFIG_FILE_PATH: &str = "src/config.toml";
-const CONFIG_FILE_PREFIX: &str = "./config/";
+use anyhow::{Result, Error, anyhow};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Log {
@@ -20,11 +17,10 @@ pub struct Server {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct LocalPath {
-    resources:String,
-    documents:String,
-    checkpoints:String,
+    pub resources:String,
+    pub documents:String,
+    pub checkpoints:String,
 }
-
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
@@ -35,9 +31,13 @@ pub struct Settings {
 
 
 impl Settings {
-    pub fn new() -> Result<Self, Error> {
+    pub fn new(config_file_path:&str) -> Result<Self, Error> {
+        if !Path::new(&config_file_path).exists(){
+            return Err(anyhow!("Config file not found: {config_file_path}"));
+        }
+
         let settings = Config::builder()
-            .add_source(config::File::with_name(CONFIG_FILE_PATH))
+            .add_source(config::File::with_name(config_file_path))
             .add_source(config::Environment::with_prefix("APP"))
             .build()
             .unwrap();
@@ -45,3 +45,4 @@ impl Settings {
 
     }
 }
+
