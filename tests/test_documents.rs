@@ -1,7 +1,14 @@
 use std::path::Path;
+use std::fs::File;
+
+use std::io::Write;
+use zip::write::ZipWriter;
+use zip::CompressionMethod;
+
+use tempfile::tempdir;
 use tokio;
 use chrono::{NaiveDate, Utc};
-use patentpick::documents::{download_weekly_fulltext, find_last_thursday, format_uspto_full_path};
+use patentpick::documents::{download_weekly_fulltext, find_last_thursday, format_uspto_full_path, parse_xml};
 
 # [tokio::test]
 # [ignore]
@@ -37,6 +44,40 @@ fn test_format_uspto_full_path() {
     // Assert that the result matches the expected output
     assert_eq!(result.to_str().unwrap().to_string(), expected);
 }
+
+#[test]
+fn test_parse_xml() {
+    // // Create a temporary directory
+    // let dir = tempdir().unwrap();
+    //
+    // // Create a path to the temporary zip file
+    // let file_path = dir.path().join("test.zip");
+    //
+    // // Create a new zip file
+    // let file = File::create(&file_path).unwrap();
+    // let mut zip = ZipWriter::new(file);
+    //
+    // // Write a simple XML file to the zip file
+    // let options = zip::write::FileOptions::default()
+    //     .compression_method(CompressionMethod::Stored)
+    //     .unix_permissions(0o755);
+    // zip.start_file("test.xml", options).unwrap();
+    // zip.write(b"<Record><value>asdf</value></Record>").unwrap();
+    //
+    // // Close the zip writer
+    // zip.finish().unwrap();
+
+
+    let file_path = Path::new("C:/Users/gmltj/Downloads").join("test_ipa.zip");
+    // let file_path = Path::new("C:/Users/gmltj/Downloads").join("ipab20231109_wk45.zip");
+
+    // Call the parse_xml function
+    parse_xml(file_path);
+
+    // Delete the temporary directory
+    // dir.close().unwrap();
+}
+
 
 #[test]
 fn test_find_last_thursday() {

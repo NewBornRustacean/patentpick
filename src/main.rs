@@ -3,11 +3,12 @@ mod documents;
 mod opensearch_handler;
 mod settings;
 
+use std::path::Path;
 use anyhow::{Result, Error};
 use chrono::Utc;
 use tokio;
 
-use documents::{download_weekly_fulltext, find_last_thursday};
+use documents::{download_weekly_fulltext, find_last_thursday, unzip_ipa};
 use settings::Settings;
 use emails::{Subscriber, PatentApplicationContent};
 
@@ -16,15 +17,17 @@ use emails::{Subscriber, PatentApplicationContent};
 async fn main() ->Result<(), Error>{
     let now_utc = Utc::now();
     let today_utc = now_utc.date_naive();
-    // let last_thursday_date = find_last_thursday(&today_utc);
-
     let settings = Settings::new("src/config.toml").unwrap();
+
+    // 1. download the latest xml into resource/documents/
     download_weekly_fulltext(
         &settings.server.uspto_url,
         &settings.server.uspto_year,
         &settings.localpath.documents,
         &today_utc
     ).await?;
+
+    // 2. open xml in zip
 
     Ok(())
     // let mut subscriber_seom =Subscriber::new(
