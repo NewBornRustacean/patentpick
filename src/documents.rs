@@ -18,22 +18,20 @@ use chrono::{Datelike, Weekday, NaiveDate};
 use serde_json::from_str;
 
 #[derive(Debug, Default, Deserialize)]
-// #[serde(rename="us-patent-application")]
 pub struct PatentRecord{
-    #[serde(rename="abstract")]
     pub abstracts: Option<String>,
+    pub country: String,
+    pub docid: String,
+    pub publication_date: String,
+    pub kind: String,
 }
 
 impl PatentRecord{
-    pub fn new(abstracts: Option<String>)->Self {
-        PatentRecord{ abstracts }
+    pub fn new(abstracts: Option<String>, country:String, docid:String, publication_date:String, kind:String)->Self {
+        PatentRecord{ abstracts,  country, docid, publication_date,  kind,   }
     }
 }
-// #[derive(Debug, Default, Deserialize)]
-// pub struct Abstract{
-//     #[serde(rename="abstract")]
-//     pub content: Option<String>,
-// }
+
 pub fn parse_xml(path_to_ipa:PathBuf)->Result<Vec<PatentRecord>>{
     let mut reader= Reader::from_file(path_to_ipa).unwrap();
     reader.trim_text(true);
@@ -42,6 +40,8 @@ pub fn parse_xml(path_to_ipa:PathBuf)->Result<Vec<PatentRecord>>{
     let mut patents:Vec<PatentRecord> = Vec::new();
     let mut junk_buf: Vec<u8> = Vec::new();
     let mut count = 0;
+    let mut abstracts=String::new();
+
 
     // streaming code
     loop {
@@ -53,6 +53,7 @@ pub fn parse_xml(path_to_ipa:PathBuf)->Result<Vec<PatentRecord>>{
             ),
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) => {
+
                 match e.name().as_ref() {
                     b"abstract" => { // parse all the sub-tags under the abstract in to single string.
                         let abstract_bytes = read_to_end_into_buffer(
@@ -63,13 +64,42 @@ pub fn parse_xml(path_to_ipa:PathBuf)->Result<Vec<PatentRecord>>{
 
                         let abstract_str = std::str::from_utf8(&abstract_bytes)
                             .unwrap();
+                        abstracts = remove_tags(abstract_str, " ");
+                    },
 
-                        patents.push(PatentRecord::new(Some(remove_tags(abstract_str))));
+                    b"publication-reference" => {
+                        let publication_refs = read_to_end_into_buffer(
+                            &mut reader,
+                            &e,
+                            &mut junk_buf
+                        ).unwrap();
+
+                        let publication_refs_str = std::str::from_utf8(&publication_refs)
+                            .unwrap();
+                        let publication_refs:String = remove_tags(publication_refs_str, " ");
+                        let mut country_docid_kind: Vec<String> = publication_refs.split(" ")
+                            .map(|s| s.to_string())
+                            .collect();
+                        country_docid_kind.retain(|x| !x.is_empty());
+
+
                         count += 1;
                         if count % 2000 == 0 {
                             println!("checked {} records", count);
+                            println!("{:?}", country_docid_kind);
+
                         }
-                    }
+
+                        patents.push(PatentRecord::new(
+                            Some(abstracts.clone()),
+                            country_docid_kind.get(0).unwrap().clone(), //country
+                            country_docid_kind.get(1).unwrap().clone(), //docid
+                            country_docid_kind.get(2).unwrap().clone(), //publication date
+                            country_docid_kind.get(3).unwrap().clone(), //kind
+                        ));
+
+                    },
+
                     _ => (),
                 }
             }
@@ -79,6 +109,7 @@ pub fn parse_xml(path_to_ipa:PathBuf)->Result<Vec<PatentRecord>>{
         // clear buffer to prevent memory leak
         buf.clear();
     }
+    println!("parsed {count} entities");
     Ok(patents)
 }
 fn read_to_end_into_buffer<R: BufRead>(
@@ -112,9 +143,9 @@ fn read_to_end_into_buffer<R: BufRead>(
     }
 }
 
-fn remove_tags(input: &str) -> String {
+fn remove_tags(input: &str, rep: &str) -> String {
     let re = Regex::new(r"<[^>]*>").unwrap();
-    let mut result = re.replace_all(input, " ").to_string();
+    let mut result = re.replace_all(input, rep).to_string();
     result.trim().to_string()
 }
 
@@ -214,12 +245,12 @@ mod tests {
     fn test_remove_tags() {
         // simple case
         let xml = "<abstract id=\"abstract\"><p id=\"p-0001\" num=\"0000\">contents in the abstract</p></abstract>";
-        let result = remove_tags(xml);
+        let result = remove_tags(xml, " ");
         assert_eq!(result, "contents in the abstract");
 
         // nested case
         let xml = "<abstract id=\"abstract\"><p id=\"p-0001\" num=\"0000\"><chemistry>contents chem</chemistry>contents in the abstract</p></abstract>";
-        let result = remove_tags(xml);
+        let result = remove_tags(xml, " ");
         assert_eq!(result, "contents chem contents in the abstract");
 
     }
