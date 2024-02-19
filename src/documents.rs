@@ -3,73 +3,120 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufRead, Read, BufReader};
 
-use quick_xml::de;
-use quick_xml::events::Event;
+use quick_xml::events::{Event, BytesStart};
 use quick_xml::reader::Reader;
+use quick_xml::Writer;
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
-
 use zip::read::ZipArchive;
 use tokio;
 use tokio::io::AsyncWriteExt;
 use anyhow::{Result, Error};
 use reqwest;
 use chrono::{Datelike, Weekday, NaiveDate};
+use serde_json::from_str;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Deserialize)]
+// #[serde(rename="us-patent-application")]
 pub struct PatentRecord{
-    pub abstracts: Vec<String>,
+    #[serde(rename="abstract")]
+    pub abstracts: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Ptag{
-    #[serde(rename="$value")]
-    content: String,
+impl PatentRecord{
+    pub fn new(abstracts: Option<String>)->Self {
+        PatentRecord{ abstracts }
+    }
 }
-
-// pub fn parse_xml(path_to_ipazip:PathBuf) {
-//     let zipfile = File::open(path_to_ipazip).unwrap();
-//     let mut archive = ZipArchive::new(zipfile).unwrap();
-//
-//     // Assuming there is only one XML file in the zip
-//     let mut xml_file = archive.by_index(0).unwrap();
-//
-//     let mut reader= Reader::from_reader((BufReader::new(&mut xml_file)));
-//     // reader.config_mut().trim_text(true);
-//     reader.trim_text(true);
-//
-//     let mut buf = Vec::new();
-//     let mut abstract_section = PatentRecord::default();
-//     let mut in_abstract = false;
-//
-//     while let Ok(evt) = reader.read_event_into(&mut buf) {
-//         match evt {
-//             Event::Start(ref e) => {
-//                 match e.name() {
-//                     b"abstract" => in_abstract = true,
-//                     b"p" if in_abstract => {
-//                         // Assuming the content of <p> is simple text without nested tags
-//                         if let Ok(text) = reader.read_text(e.name(), &mut Vec::new()) {
-//                             abstract_section.abstracts.push(text);
-//                         }
-//                     },
-//                     _ => (), // Handle other tags like <chemistry> if needed
-//                 }
-//             },
-//             Event::End(ref e) => {
-//                 if e.name() == b"abstract" {
-//                     in_abstract = false; // Exiting the <abstract> section
-//                 }
-//             },
-//             Event::Eof => break,
-//             _ => (),
-//         }
-//         buf.clear();
-//     }
-//
-//     println!("{:?}", abstract_section);
-//
+// #[derive(Debug, Default, Deserialize)]
+// pub struct Abstract{
+//     #[serde(rename="abstract")]
+//     pub content: Option<String>,
 // }
+pub fn parse_xml(path_to_ipa:PathBuf)->Result<Vec<PatentRecord>>{
+    let mut reader= Reader::from_file(path_to_ipa).unwrap();
+    reader.trim_text(true);
+
+    let mut buf = Vec::new();
+    let mut patents:Vec<PatentRecord> = Vec::new();
+    let mut junk_buf: Vec<u8> = Vec::new();
+    let mut count = 0;
+
+    // streaming code
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(e) => panic!(
+                "Error at position {}: {:?}",
+                reader.buffer_position(),
+                e
+            ),
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(e)) => {
+                match e.name().as_ref() {
+                    b"abstract" => { // parse all the sub-tags under the abstract in to single string.
+                        let abstract_bytes = read_to_end_into_buffer(
+                            &mut reader,
+                            &e,
+                            &mut junk_buf
+                        ).unwrap();
+
+                        let abstract_str = std::str::from_utf8(&abstract_bytes)
+                            .unwrap();
+
+                        patents.push(PatentRecord::new(Some(remove_tags(abstract_str))));
+                        count += 1;
+                        if count % 2000 == 0 {
+                            println!("checked {} records", count);
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            // Other Events are not important for us
+            _ => (),
+        }
+        // clear buffer to prevent memory leak
+        buf.clear();
+    }
+    Ok(patents)
+}
+fn read_to_end_into_buffer<R: BufRead>(
+    reader: &mut Reader<R>,
+    start_tag: &BytesStart,
+    junk_buf: &mut Vec<u8>,
+) -> Result<Vec<u8>, quick_xml::Error> {
+    let mut depth = 0;
+    let mut output_buf: Vec<u8> = Vec::new();
+    let mut w = Writer::new(&mut output_buf);
+    let tag_name = start_tag.name();
+    w.write_event(Event::Start(start_tag.clone()))?;
+    loop {
+        junk_buf.clear();
+        let event = reader.read_event_into(junk_buf)?;
+        w.write_event(&event)?;
+
+        match event {
+            Event::Start(e) if e.name() == tag_name => depth += 1,
+            Event::End(e) if e.name() == tag_name => {
+                if depth == 0 {
+                    return Ok(output_buf);
+                }
+                depth -= 1;
+            }
+            Event::Eof => {
+                panic!("read_to_end_into_buffer meets EOF")
+            }
+            _ => {}
+        }
+    }
+}
+
+fn remove_tags(input: &str) -> String {
+    let re = Regex::new(r"<[^>]*>").unwrap();
+    let mut result = re.replace_all(input, " ").to_string();
+    result.trim().to_string()
+}
 
 pub async fn download_weekly_fulltext(uspto_url:&str, uspto_year:&str, save_dir:&str, today_utc: &NaiveDate)->Result<(), Error>{
     let last_thursday_date = find_last_thursday(today_utc);
@@ -158,4 +205,22 @@ pub fn unzip_ipa(path_to_documents:&str, zipfile_name:&str) -> zip::result::ZipR
     println!("zip file removed:{}", ipa_zip_path.display());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_remove_tags() {
+        // simple case
+        let xml = "<abstract id=\"abstract\"><p id=\"p-0001\" num=\"0000\">contents in the abstract</p></abstract>";
+        let result = remove_tags(xml);
+        assert_eq!(result, "contents in the abstract");
+
+        // nested case
+        let xml = "<abstract id=\"abstract\"><p id=\"p-0001\" num=\"0000\"><chemistry>contents chem</chemistry>contents in the abstract</p></abstract>";
+        let result = remove_tags(xml);
+        assert_eq!(result, "contents chem contents in the abstract");
+
+    }
 }

@@ -22,6 +22,7 @@ zip = "0.6.6"
 quick-xml= { version = "0.31.0" , features = ["serde", "serialize", "overlapped-lists"]}
 tempfile = "3.10.0"
 tempdir = "0.3.7"
+regex = "1.10.3"
 
 [features]
 exclude_from_ci = []
