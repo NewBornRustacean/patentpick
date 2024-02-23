@@ -1,20 +1,19 @@
-mod emails;
 mod documents;
+mod emails;
 mod opensearch_handler;
 mod settings;
 
-use std::path::Path;
-use anyhow::{Result, Error};
+use anyhow::{Error, Result};
 use chrono::Utc;
+use std::path::Path;
 use tokio;
 
 use documents::{download_weekly_fulltext, find_last_thursday, unzip_ipa};
+use emails::{PatentApplicationContent, Subscriber};
 use settings::Settings;
-use emails::{Subscriber, PatentApplicationContent};
-
 
 #[tokio::main]
-async fn main() ->Result<(), Error>{
+async fn main() -> Result<(), Error> {
     let now_utc = Utc::now();
     let today_utc = now_utc.date_naive();
     let settings = Settings::new("src/config.toml").unwrap();
@@ -24,8 +23,9 @@ async fn main() ->Result<(), Error>{
         &settings.server.uspto_url,
         &settings.server.uspto_year,
         &settings.localpath.documents,
-        &today_utc
-    ).await?;
+        &today_utc,
+    )
+    .await?;
 
     // 2. open xml in zip
 

@@ -1,12 +1,12 @@
 use std::env;
 use std::path::PathBuf;
 
-use anyhow::{Result, Error};
+use anyhow::{Error, Result};
+use lettre::transport::smtp::authentication::Credentials;
 use lettre::{
     message::{header, MultiPart, SinglePart},
     Message, SmtpTransport, Transport,
 };
-use lettre::transport::smtp::authentication::Credentials;
 use maud::html;
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,7 @@ pub enum EmailError {
     HtmlNotComposed,
     SendFailed,
 }
-pub struct PatentApplicationContent{
+pub struct PatentApplicationContent {
     pub title: String,
     pub hyperlink: String,
 }
@@ -35,8 +35,18 @@ pub struct Subscriber {
 }
 
 impl Subscriber {
-    pub fn new(name: String, email: String, search_queries:Vec<String>, html_to_send:Option<String>) -> Self {
-        Subscriber { name, email, search_queries, html_to_send}
+    pub fn new(
+        name: String,
+        email: String,
+        search_queries: Vec<String>,
+        html_to_send: Option<String>,
+    ) -> Self {
+        Subscriber {
+            name,
+            email,
+            search_queries,
+            html_to_send,
+        }
     }
 
     pub fn compose_html(&mut self, applications: &Vec<PatentApplicationContent>) -> &Self {
@@ -64,9 +74,8 @@ impl Subscriber {
                 }
             }
         };
-        self.html_to_send=Some(html.into_string());
+        self.html_to_send = Some(html.into_string());
         self
-
     }
 
     pub fn send_email(&self) -> Result<(), EmailError> {
@@ -85,7 +94,9 @@ impl Subscriber {
                             .singlepart(
                                 SinglePart::builder()
                                     .header(header::ContentType::TEXT_PLAIN)
-                                    .body(String::from("Hello from Lettre! A mailer library for Rust")), // Every message should have a plain text fallback.
+                                    .body(String::from(
+                                        "Hello from Lettre! A mailer library for Rust",
+                                    )), // Every message should have a plain text fallback.
                             )
                             .singlepart(
                                 SinglePart::builder()
@@ -98,7 +109,8 @@ impl Subscriber {
                 let mailer: SmtpTransport = SmtpTransport::relay(&host)
                     .unwrap()
                     .credentials(Credentials::new(
-                        email_from.to_string(), brevo_key.to_string(),
+                        email_from.to_string(),
+                        brevo_key.to_string(),
                     ))
                     .build();
 
@@ -106,19 +118,19 @@ impl Subscriber {
                     Ok(_) => {
                         println!("your email sent properly!");
                         Ok(())
-                    },
+                    }
                     Err(e) => {
                         println!("couldn't send email {:?}", e);
                         Err(EmailError::SendFailed)
-                    },
+                    }
                 }
-            },
+            }
             None => Err(EmailError::HtmlNotComposed),
         }
     }
 }
 
-pub fn get_subscribers(json_path:PathBuf) ->Result<Vec<Subscriber>, Error>{
+pub fn get_subscribers(json_path: PathBuf) -> Result<Vec<Subscriber>, Error> {
     let file = std::fs::File::open(json_path)?;
     let subscribers: Vec<Subscriber> = serde_json::from_reader(file)?;
 

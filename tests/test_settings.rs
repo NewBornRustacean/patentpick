@@ -1,7 +1,7 @@
 use config::Config;
 use patentpick::settings::Settings;
 
-# [test]
+#[test]
 #[cfg(not(feature = "exclude_from_ci"))]
 fn test_settings_new() {
     let settings = Settings::new("src/config.toml").unwrap();
@@ -9,10 +9,9 @@ fn test_settings_new() {
     println!("{:?}", settings);
 }
 
-
 // Define another test function to check for errors
-# [test]
-fn test_settings_new_error(){
+#[test]
+fn test_settings_new_error() {
     // Use a mock config file path that does not exist
     let mock_config_file_path = "src/mock_config.toml";
 
@@ -24,5 +23,4 @@ fn test_settings_new_error(){
 
     let error = settings.unwrap_err();
     println!("{error}");
-
 }
