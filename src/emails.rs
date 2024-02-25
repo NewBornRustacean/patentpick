@@ -35,12 +35,7 @@ pub struct Subscriber {
 }
 
 impl Subscriber {
-    pub fn new(
-        name: String,
-        email: String,
-        search_queries: Vec<String>,
-        html_to_send: Option<String>,
-    ) -> Self {
+    pub fn new(name: String, email: String, search_queries: Vec<String>, html_to_send: Option<String>) -> Self {
         Subscriber {
             name,
             email,
@@ -94,9 +89,7 @@ impl Subscriber {
                             .singlepart(
                                 SinglePart::builder()
                                     .header(header::ContentType::TEXT_PLAIN)
-                                    .body(String::from(
-                                        "Hello from Lettre! A mailer library for Rust",
-                                    )), // Every message should have a plain text fallback.
+                                    .body(String::from("Hello from Lettre! A mailer library for Rust")), // Every message should have a plain text fallback.
                             )
                             .singlepart(
                                 SinglePart::builder()
@@ -108,10 +101,7 @@ impl Subscriber {
 
                 let mailer: SmtpTransport = SmtpTransport::relay(&host)
                     .unwrap()
-                    .credentials(Credentials::new(
-                        email_from.to_string(),
-                        brevo_key.to_string(),
-                    ))
+                    .credentials(Credentials::new(email_from.to_string(), brevo_key.to_string()))
                     .build();
 
                 match mailer.send(&email) {

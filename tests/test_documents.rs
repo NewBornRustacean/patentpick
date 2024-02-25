@@ -1,15 +1,10 @@
-use std::fs::File;
 use std::path::Path;
-
-use std::io::Write;
-use zip::write::ZipWriter;
-use zip::CompressionMethod;
 
 use chrono::{NaiveDate, Utc};
 use patentpick::documents::{
-    download_weekly_fulltext, find_last_thursday, format_uspto_full_path, parse_xml,
+    download_weekly_fulltext, find_last_thursday, format_uspto_full_path, get_abstracts_from_patents, parse_xml,
+    PatentRecord,
 };
-use tempfile::tempdir;
 use tokio;
 
 #[tokio::test]
@@ -39,8 +34,7 @@ fn test_format_uspto_full_path() {
     let result = format_uspto_full_path(uspto_url, uspto_year, last_thursday);
 
     // Define the expected output
-    let expected =
-        "https://bulkdata.uspto.gov/data/patent/grant/redbook/fulltext/2024/ipa240208.zip";
+    let expected = "https://bulkdata.uspto.gov/data/patent/grant/redbook/fulltext/2024/ipa240208.zip";
 
     println!("result_uspto_url: {:?}", result);
 
@@ -65,14 +59,8 @@ fn test_find_last_thursday() {
             NaiveDate::from_ymd_opt(2024, 2, 12),
             NaiveDate::from_ymd_opt(2024, 2, 8),
         ),
-        (
-            NaiveDate::from_ymd_opt(2024, 2, 8),
-            NaiveDate::from_ymd_opt(2024, 2, 8),
-        ),
-        (
-            NaiveDate::from_ymd_opt(2024, 2, 7),
-            NaiveDate::from_ymd_opt(2024, 2, 1),
-        ),
+        (NaiveDate::from_ymd_opt(2024, 2, 8), NaiveDate::from_ymd_opt(2024, 2, 8)),
+        (NaiveDate::from_ymd_opt(2024, 2, 7), NaiveDate::from_ymd_opt(2024, 2, 1)),
         (
             NaiveDate::from_ymd_opt(2024, 1, 1),
             NaiveDate::from_ymd_opt(2023, 12, 28),
@@ -84,4 +72,35 @@ fn test_find_last_thursday() {
         let result = find_last_thursday(&today.unwrap());
         assert_eq!(result, expected.unwrap());
     }
+}
+
+#[test]
+fn test_get_abstracts_from_patents() {
+    let patents = vec![
+        PatentRecord {
+            abstracts: "Abstract 1".to_string(),
+            country: "Country 1".to_string(),
+            docid: "DocID 1".to_string(),
+            publication_date: "2024-02-24".to_string(),
+            kind: "Kind 1".to_string(),
+        },
+        PatentRecord {
+            abstracts: "Abstract 2".to_string(),
+            country: "Country 2".to_string(),
+            docid: "DocID 2".to_string(),
+            publication_date: "2024-02-25".to_string(),
+            kind: "Kind 2".to_string(),
+        },
+        PatentRecord {
+            abstracts: "Abstract 3".to_string(),
+            country: "Country 3".to_string(),
+            docid: "DocID 3".to_string(),
+            publication_date: "2024-02-26".to_string(),
+            kind: "Kind 3".to_string(),
+        },
+    ];
+
+    let result = get_abstracts_from_patents(&patents).unwrap();
+
+    assert_eq!(result, vec!["Abstract 1", "Abstract 2", "Abstract 3"]);
 }

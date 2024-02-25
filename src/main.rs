@@ -3,12 +3,15 @@ mod emails;
 mod opensearch_handler;
 mod settings;
 
+use std::path::{Path, PathBuf};
+
 use anyhow::{Error, Result};
 use chrono::Utc;
-use std::path::Path;
+use mpnet_rs::mpnet::{get_embeddings_parallel, load_model};
+use tokenizers::Tokenizer;
 use tokio;
 
-use documents::{download_weekly_fulltext, find_last_thursday, unzip_ipa};
+use documents::{download_weekly_fulltext, parse_xml, get_abstracts_from_patents};
 use emails::{PatentApplicationContent, Subscriber};
 use settings::Settings;
 
@@ -17,9 +20,11 @@ async fn main() -> Result<(), Error> {
     let now_utc = Utc::now();
     let today_utc = now_utc.date_naive();
     let settings = Settings::new("src/config.toml").unwrap();
+    let (model, mut tokenizer, pooler) = load_model(settings.localpath.checkpoints).unwrap();
+    let chunksize:usize = 10;
 
     // 1. download the latest xml into resource/documents/
-    download_weekly_fulltext(
+    let xmlfile_path = download_weekly_fulltext(
         &settings.server.uspto_url,
         &settings.server.uspto_year,
         &settings.localpath.documents,
@@ -27,7 +32,12 @@ async fn main() -> Result<(), Error> {
     )
     .await?;
 
-    // 2. open xml in zip
+    // 2. parse xml into vec.
+    let patents = parse_xml(xmlfile_path);
+
+    // 3. get emgeddings from patents
+    let abstracts = get_abstracts_from_patents(&patents.unwrap())?;
+    // get_embeddings_parallel(model, tokenizer, pooler, chunksize)
 
     Ok(())
     // let mut subscriber_seom =Subscriber::new(

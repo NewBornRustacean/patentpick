@@ -1,5 +1,4 @@
 use anyhow::{Error, Result};
-use mpnet_rs::mpnet::{get_embeddings, load_model};
 use opensearch::http::transport::{SingleNodeConnectionPool, TransportBuilder};
 use opensearch::http::Url;
 use opensearch::indices::IndicesCreateParts;
