@@ -175,28 +175,32 @@ pub async fn download_weekly_fulltext(
     let download_url = format_uspto_full_path(uspto_url, uspto_year, last_thursday_date);
     let download_url_str = download_url.to_str().unwrap();
     let filename = download_url.file_name().unwrap().to_str().unwrap();
-    let ipa_file_path = Path::new(save_dir).join(filename);
+    let ipa_zip_file_path = Path::new(save_dir).join(filename);
+    let formatted_date = last_thursday_date.format("%y%m%d").to_string();
+    let ipa_xml_file_path = Path::new(save_dir).join(format!("ipa{formatted_date}.xml"));
 
-    if !ipa_file_path.exists() {
-        println!("--there is NO file at: {:?}", ipa_file_path);
+    if !ipa_xml_file_path.exists() {
+        println!("--there is NO file at: {:?}", ipa_xml_file_path);
         println!("--Start to Download..");
 
         let response = reqwest::get(download_url_str).await?;
         if response.status().is_success() {
             let bytes = response.bytes().await?;
 
-            let mut file = tokio::fs::File::create(&ipa_file_path).await.unwrap();
+            let mut file = tokio::fs::File::create(&ipa_zip_file_path).await.unwrap();
             file.write_all(&bytes).await.unwrap();
 
-            println!("File downloaded successfully to {:?}", ipa_file_path);
+            println!("File downloaded successfully to {:?}", ipa_zip_file_path);
         } else {
             println!("Failed to download the file. Status: {}", response.status());
         }
 
         unzip_ipa(save_dir, filename)?;
+    } else{
+        println!("--Nothing to download, file open from {}", ipa_zip_file_path.display());
     }
 
-    Ok(ipa_file_path)
+    Ok(ipa_xml_file_path)
 }
 
 pub fn format_uspto_full_path(uspto_url: &str, uspto_year: &str, last_thursday_date: NaiveDate) -> PathBuf {

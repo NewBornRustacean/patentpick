@@ -24,6 +24,7 @@ tempfile = "3.10.0"
 tempdir = "0.3.7"
 regex = "1.10.3"
 rayon = "1.8.1"
+indicatif = "0.17.8"
 
 [features]
 exclude_from_ci = []

@@ -10,6 +10,7 @@ use chrono::Utc;
 use mpnet_rs::mpnet::{get_embeddings_parallel, load_model};
 use tokenizers::Tokenizer;
 use tokio;
+use indicatif::ProgressBar;
 
 use documents::{download_weekly_fulltext, parse_xml, get_abstracts_from_patents};
 use emails::{PatentApplicationContent, Subscriber};
@@ -21,9 +22,16 @@ async fn main() -> Result<(), Error> {
     let today_utc = now_utc.date_naive();
     let settings = Settings::new("src/config.toml").unwrap();
     let (model, mut tokenizer, pooler) = load_model(settings.localpath.checkpoints).unwrap();
-    let chunksize:usize = 10;
+    let chunksize:usize = 20;
 
-    // 1. download the latest xml into resource/documents/
+    // Progress reporting setup
+    let progress_bar = ProgressBar::new(3); // 3 steps
+    progress_bar.set_style(indicatif::ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}")
+        .expect("REASON")
+        .progress_chars("=> "));
+
+    progress_bar.set_message("Downloading XML...");
     let xmlfile_path = download_weekly_fulltext(
         &settings.server.uspto_url,
         &settings.server.uspto_year,
@@ -31,14 +39,18 @@ async fn main() -> Result<(), Error> {
         &today_utc,
     )
     .await?;
+    progress_bar.inc(1);
 
-    // 2. parse xml into vec.
-    let patents = parse_xml(xmlfile_path);
+    progress_bar.set_message("Parsing XML...");
+    let patents = parse_xml(xmlfile_path)?;
+    progress_bar.inc(1);
+    //
+    // progress_bar.set_message("Getting embeddings...");
+    // let abstracts = get_abstracts_from_patents(&patents)?;
+    // let embeddings = get_embeddings_parallel(&model, &tokenizer, Some(&pooler), &abstracts, chunksize);
+    // progress_bar.inc(1);
 
-    // 3. get emgeddings from patents
-    let abstracts = get_abstracts_from_patents(&patents.unwrap())?;
-    // get_embeddings_parallel(model, tokenizer, pooler, chunksize)
-
+    progress_bar.finish_with_message("All steps completed successfully.");
     Ok(())
     // let mut subscriber_seom =Subscriber::new(
     //     "SeomKim".to_string(),
