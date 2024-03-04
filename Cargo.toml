@@ -12,7 +12,7 @@ lettre = "0.11.3"
 maud = "0.26.0"
 tokenizers = "0.15.1"
 serde_json = "1.0.113"
-mpnet-rs = "0.1.0"
+mpnet-rs = "0.1.1"
 opensearch = "2.2.0"
 anyhow = "1.0.79"
 chrono = "0.4.33"
@@ -23,6 +23,8 @@ quick-xml= { version = "0.31.0" , features = ["serde", "serialize", "overlapped-
 tempfile = "3.10.0"
 tempdir = "0.3.7"
 regex = "1.10.3"
+rayon = "1.8.1"
+indicatif = "0.17.8"
 
 [features]
 exclude_from_ci = []

@@ -1,6 +1,6 @@
 use std::fs;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, Read};
 use std::path::{Path, PathBuf};
 
 use quick_xml::events::{BytesStart, Event};
@@ -9,6 +9,7 @@ use quick_xml::Writer;
 
 use anyhow::{Error, Result};
 use chrono::{Datelike, NaiveDate, Weekday};
+use rayon::prelude::*;
 use regex::Regex;
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -27,7 +28,13 @@ pub struct PatentRecord {
 
 impl PatentRecord {
     pub fn new(abstracts: String, country: String, docid: String, publication_date: String, kind: String) -> Self {
-        PatentRecord { abstracts, country,  docid,  publication_date, kind }
+        PatentRecord {
+            abstracts,
+            country,
+            docid,
+            publication_date,
+            kind,
+        }
     }
     pub fn is_full(&self) -> bool {
         if !self.abstracts.is_empty()
@@ -52,9 +59,9 @@ pub fn parse_xml(path_to_ipa: PathBuf) -> Result<Vec<PatentRecord>> {
     let mut junk_buf: Vec<u8> = Vec::new();
     let mut count = 0;
     let mut patent_application_start_flag = false;
-    let mut patent_record:Option<PatentRecord> = None ;
+    let mut patent_record: Option<PatentRecord> = None;
 
-
+    println!("--Parsing xml..");
     // streaming code
     loop {
         if patent_application_start_flag & patent_record.as_ref().is_none() {
@@ -68,26 +75,23 @@ pub fn parse_xml(path_to_ipa: PathBuf) -> Result<Vec<PatentRecord>> {
             Ok(Event::Start(e)) => {
                 match e.name().as_ref() {
                     b"us-patent-application" => {
-                        patent_application_start_flag=true;
+                        patent_application_start_flag = true;
                     }
 
                     b"abstract" => {
                         // parse all the sub-tags under the abstract in to single string.
-                        let abstract_bytes =
-                            read_to_end_into_buffer(&mut reader, &e, &mut junk_buf).unwrap();
+                        let abstract_bytes = read_to_end_into_buffer(&mut reader, &e, &mut junk_buf).unwrap();
 
                         let abstract_str = std::str::from_utf8(&abstract_bytes).unwrap();
                         let abstracts = remove_tags(abstract_str, " ");
 
-                        if patent_record.is_some(){
+                        if patent_record.is_some() {
                             patent_record.as_mut().unwrap().abstracts = abstracts;
                         }
-
                     }
 
                     b"publication-reference" => {
-                        let publication_refs =
-                            read_to_end_into_buffer(&mut reader, &e, &mut junk_buf).unwrap();
+                        let publication_refs = read_to_end_into_buffer(&mut reader, &e, &mut junk_buf).unwrap();
 
                         let publication_refs_str = std::str::from_utf8(&publication_refs).unwrap();
                         let publication_refs: String = remove_tags(publication_refs_str, " ");
@@ -95,31 +99,27 @@ pub fn parse_xml(path_to_ipa: PathBuf) -> Result<Vec<PatentRecord>> {
                             publication_refs.split(" ").map(|s| s.to_string()).collect();
                         country_docid_kind.retain(|x| !x.is_empty());
 
-                        if patent_record.is_some(){
+                        if patent_record.is_some() {
                             patent_record.as_mut().unwrap().country = country_docid_kind.get(0).unwrap().to_string();
                             patent_record.as_mut().unwrap().docid = country_docid_kind.get(1).unwrap().to_string();
                             patent_record.as_mut().unwrap().publication_date =
                                 country_docid_kind.get(2).unwrap().to_string();
                             patent_record.as_mut().unwrap().kind = country_docid_kind.get(3).unwrap().to_string();
-
                         }
-
-                    }
-                    _ => (),
-                }
-            },
-
-            Ok(Event::End(e)) => {
-                match e.name().as_ref() {
-                    b"us-patent-application" => {
-                        count += 1;
-                        patents.push(patent_record.unwrap());
-                        patent_application_start_flag = false;
-                        patent_record = None;
                     }
                     _ => (),
                 }
             }
+
+            Ok(Event::End(e)) => match e.name().as_ref() {
+                b"us-patent-application" => {
+                    count += 1;
+                    patents.push(patent_record.unwrap());
+                    patent_application_start_flag = false;
+                    patent_record = None;
+                }
+                _ => (),
+            },
 
             _ => (),
         }
@@ -170,40 +170,40 @@ pub async fn download_weekly_fulltext(
     uspto_year: &str,
     save_dir: &str,
     today_utc: &NaiveDate,
-) -> Result<(), Error> {
+) -> Result<PathBuf, Error> {
     let last_thursday_date = find_last_thursday(today_utc);
     let download_url = format_uspto_full_path(uspto_url, uspto_year, last_thursday_date);
     let download_url_str = download_url.to_str().unwrap();
     let filename = download_url.file_name().unwrap().to_str().unwrap();
-    let ipa_file_path = Path::new(save_dir).join(filename);
+    let ipa_zip_file_path = Path::new(save_dir).join(filename);
+    let formatted_date = last_thursday_date.format("%y%m%d").to_string();
+    let ipa_xml_file_path = Path::new(save_dir).join(format!("ipa{formatted_date}.xml"));
 
-    if !ipa_file_path.exists() {
-        println!("--there is NO file at: {:?}", ipa_file_path);
+    if !ipa_xml_file_path.exists() {
+        println!("--there is NO file at: {:?}", ipa_xml_file_path);
         println!("--Start to Download..");
 
         let response = reqwest::get(download_url_str).await?;
         if response.status().is_success() {
             let bytes = response.bytes().await?;
 
-            let mut file = tokio::fs::File::create(&ipa_file_path).await.unwrap();
+            let mut file = tokio::fs::File::create(&ipa_zip_file_path).await.unwrap();
             file.write_all(&bytes).await.unwrap();
 
-            println!("File downloaded successfully to {:?}", ipa_file_path);
+            println!("File downloaded successfully to {:?}", ipa_zip_file_path);
         } else {
             println!("Failed to download the file. Status: {}", response.status());
         }
 
         unzip_ipa(save_dir, filename)?;
+    } else{
+        println!("--Nothing to download, file open from {}", ipa_zip_file_path.display());
     }
 
-    Ok(())
+    Ok(ipa_xml_file_path)
 }
 
-pub fn format_uspto_full_path(
-    uspto_url: &str,
-    uspto_year: &str,
-    last_thursday_date: NaiveDate,
-) -> PathBuf {
+pub fn format_uspto_full_path(uspto_url: &str, uspto_year: &str, last_thursday_date: NaiveDate) -> PathBuf {
     // Format the date as needed
     let mut file_name = "ipa".to_string();
     let formatted_date = last_thursday_date.format("%y%m%d").to_string();
@@ -266,6 +266,22 @@ pub fn unzip_ipa(path_to_documents: &str, zipfile_name: &str) -> zip::result::Zi
 
     Ok(())
 }
+
+pub fn get_abstracts_from_patents<'a>(patents: &'a[PatentRecord]) -> Result<Vec<&'a str>> {
+    let abstracts: Vec<&str> = patents
+        .iter()
+        .filter_map(|record| {
+            // Filter out records that are not full and return a reference to the abstracts
+            if record.is_full() {
+                Some(record.abstracts.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(abstracts)
+}
+
 
 #[cfg(test)]
 mod tests {
