@@ -55,16 +55,10 @@ fn test_parse_xml() {
 fn test_find_last_thursday() {
     // Define some sample dates and their expected last Thursdays
     let samples = [
-        (
-            NaiveDate::from_ymd_opt(2024, 2, 12),
-            NaiveDate::from_ymd_opt(2024, 2, 8),
-        ),
+        (NaiveDate::from_ymd_opt(2024, 2, 12), NaiveDate::from_ymd_opt(2024, 2, 8)),
         (NaiveDate::from_ymd_opt(2024, 2, 8), NaiveDate::from_ymd_opt(2024, 2, 8)),
         (NaiveDate::from_ymd_opt(2024, 2, 7), NaiveDate::from_ymd_opt(2024, 2, 1)),
-        (
-            NaiveDate::from_ymd_opt(2024, 1, 1),
-            NaiveDate::from_ymd_opt(2023, 12, 28),
-        ),
+        (NaiveDate::from_ymd_opt(2024, 1, 1), NaiveDate::from_ymd_opt(2023, 12, 28)),
     ];
 
     // Loop through the samples and assert the results

@@ -108,13 +108,13 @@ impl Subscriber {
                     Ok(_) => {
                         println!("your email sent properly!");
                         Ok(())
-                    }
+                    },
                     Err(e) => {
                         println!("couldn't send email {:?}", e);
                         Err(EmailError::SendFailed)
-                    }
+                    },
                 }
-            }
+            },
             None => Err(EmailError::HtmlNotComposed),
         }
     }
