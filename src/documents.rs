@@ -17,7 +17,7 @@ use tokio;
 use tokio::io::AsyncWriteExt;
 use zip::read::ZipArchive;
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct PatentRecord {
     pub abstracts: String,
     pub country: String,
@@ -76,7 +76,7 @@ pub fn parse_xml(path_to_ipa: PathBuf) -> Result<Vec<PatentRecord>> {
                 match e.name().as_ref() {
                     b"us-patent-application" => {
                         patent_application_start_flag = true;
-                    }
+                    },
 
                     b"abstract" => {
                         // parse all the sub-tags under the abstract in to single string.
@@ -88,7 +88,7 @@ pub fn parse_xml(path_to_ipa: PathBuf) -> Result<Vec<PatentRecord>> {
                         if patent_record.is_some() {
                             patent_record.as_mut().unwrap().abstracts = abstracts;
                         }
-                    }
+                    },
 
                     b"publication-reference" => {
                         let publication_refs = read_to_end_into_buffer(&mut reader, &e, &mut junk_buf).unwrap();
@@ -106,10 +106,10 @@ pub fn parse_xml(path_to_ipa: PathBuf) -> Result<Vec<PatentRecord>> {
                                 country_docid_kind.get(2).unwrap().to_string();
                             patent_record.as_mut().unwrap().kind = country_docid_kind.get(3).unwrap().to_string();
                         }
-                    }
+                    },
                     _ => (),
                 }
-            }
+            },
 
             Ok(Event::End(e)) => match e.name().as_ref() {
                 b"us-patent-application" => {
@@ -117,7 +117,7 @@ pub fn parse_xml(path_to_ipa: PathBuf) -> Result<Vec<PatentRecord>> {
                     patents.push(patent_record.unwrap());
                     patent_application_start_flag = false;
                     patent_record = None;
-                }
+                },
                 _ => (),
             },
 
@@ -150,11 +150,11 @@ fn read_to_end_into_buffer<R: BufRead>(
                     return Ok(output_buf);
                 }
                 depth -= 1;
-            }
+            },
             Event::Eof => {
                 panic!("read_to_end_into_buffer meets EOF")
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }
@@ -196,7 +196,7 @@ pub async fn download_weekly_fulltext(
         }
 
         unzip_ipa(save_dir, filename)?;
-    } else{
+    } else {
         println!("--Nothing to download, file open from {}", ipa_zip_file_path.display());
     }
 
@@ -244,12 +244,7 @@ pub fn unzip_ipa(path_to_documents: &str, zipfile_name: &str) -> zip::result::Zi
             println!("File {} extracted to \"{}\"", i, outpath.display());
             fs::create_dir_all(&outpath)?;
         } else {
-            println!(
-                "File {} extracted to \"{}\" ({} bytes)",
-                i,
-                outpath.display(),
-                file.size()
-            );
+            println!("File {} extracted to \"{}\" ({} bytes)", i, outpath.display(), file.size());
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
                     fs::create_dir_all(&p)?;
@@ -267,7 +262,7 @@ pub fn unzip_ipa(path_to_documents: &str, zipfile_name: &str) -> zip::result::Zi
     Ok(())
 }
 
-pub fn get_abstracts_from_patents<'a>(patents: &'a[PatentRecord]) -> Result<Vec<&'a str>> {
+pub fn get_abstracts_from_patents<'a>(patents: &'a [PatentRecord]) -> Result<Vec<&'a str>> {
     let abstracts: Vec<&str> = patents
         .iter()
         .filter_map(|record| {
@@ -281,7 +276,6 @@ pub fn get_abstracts_from_patents<'a>(patents: &'a[PatentRecord]) -> Result<Vec<
         .collect();
     Ok(abstracts)
 }
-
 
 #[cfg(test)]
 mod tests {

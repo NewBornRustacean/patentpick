@@ -1,2 +1,8 @@
 # rustfmt.toml
 max_width = 120
+chain_width = 70
+fn_call_width = 90
+short_array_element_width_threshold = 70
+single_line_if_else_max_width = 50
+single_line_let_else_max_width = 70
+match_block_trailing_comma = true

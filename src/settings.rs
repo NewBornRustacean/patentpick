@@ -10,7 +10,7 @@ pub struct Log {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Server {
-    pub opensearch_url: String,
+    pub qdrant_url: String,
     pub uspto_url: String,
     pub uspto_year: String,
 }
