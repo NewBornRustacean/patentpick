@@ -9,12 +9,12 @@ use anyhow::{Error, Result};
 use chrono::Utc;
 use indicatif::ProgressBar;
 use mpnet_rs::mpnet::{get_embeddings_parallel, load_model};
-use tokenizers::Tokenizer;
 use tokio;
 
 use documents::{download_weekly_fulltext, get_abstracts_from_patents, parse_xml};
 use emails::{PatentApplicationContent, Subscriber};
 use settings::Settings;
+use vectordb::VectorDB;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -22,7 +22,7 @@ async fn main() -> Result<(), Error> {
     let today_utc = now_utc.date_naive();
     let settings = Settings::new("src/config.toml").unwrap();
     let (model, mut tokenizer, pooler) = load_model(settings.localpath.checkpoints).unwrap();
-    let chunksize: usize = 20;
+    let parallel_embedding_chunksize: usize = 20;
 
     // Progress reporting setup
     let progress_bar = ProgressBar::new(3); // 3 steps
@@ -44,14 +44,17 @@ async fn main() -> Result<(), Error> {
     let patents = parse_xml(xmlfile_path)?;
     progress_bar.inc(1);
 
-    progress_bar.set_message("Getting embeddings...");
-    let abstracts = get_abstracts_from_patents(&patents)?;
-    let _embeddings = get_embeddings_parallel(&model, &tokenizer, Some(&pooler), &abstracts, chunksize)?;
-    let embeddings = _embeddings.to_vec2::<f32>().unwrap();
-    progress_bar.inc(1);
+    // progress_bar.set_message("Getting embeddings...");
+    // let abstracts = get_abstracts_from_patents(&patents)?;
+    // let _embeddings = get_embeddings_parallel(&model, &tokenizer, Some(&pooler), &abstracts, parallel_embedding_chunksize)?;
+    // let embeddings = _embeddings.to_vec2::<f32>().unwrap();
+    // progress_bar.inc(1);
+    //
+    // progress_bar.set_message("Upload embeddings to vectorDB...");
+    // let mut vectordb = VectorDB::new(settings..as_ref());
+    // vectordb.client.collection_exists()
+    // progress_bar.inc(1);
 
-    progress_bar.finish_with_message("All steps completed successfully.");
-    Ok(())
     // let mut subscriber_seom =Subscriber::new(
     //     "SeomKim".to_string(),
     //     "huiseomkim@gmail.com".to_string(),
@@ -86,4 +89,7 @@ async fn main() -> Result<(), Error> {
     // );
     //
     // subscriber_seom.compose_html(&mock_results).send_email().unwrap();
+
+    progress_bar.finish_with_message("All steps completed successfully.");
+    Ok(())
 }

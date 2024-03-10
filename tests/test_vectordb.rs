@@ -12,6 +12,7 @@ async fn test_vectordb_insert_search() -> Result<()> {
 
     let patent_records: Vec<PatentRecord> = vec![
         PatentRecord::new(
+            "title 111".to_string(),
             "this is abstract 111".to_string(),
             "Korea".to_string(),
             "docid111".to_string(),
@@ -19,6 +20,7 @@ async fn test_vectordb_insert_search() -> Result<()> {
             "this is kind".to_string(),
         ),
         PatentRecord::new(
+            "title 222".to_string(),
             "this is abstract 222".to_string(),
             "Korea".to_string(),
             "docid222".to_string(),
@@ -26,6 +28,7 @@ async fn test_vectordb_insert_search() -> Result<()> {
             "this is kind".to_string(),
         ),
         PatentRecord::new(
+            "title 333".to_string(),
             "this is abstract 333".to_string(),
             "Korea".to_string(),
             "docid333".to_string(),
@@ -33,6 +36,7 @@ async fn test_vectordb_insert_search() -> Result<()> {
             "this is kind".to_string(),
         ),
         PatentRecord::new(
+            "title 444".to_string(),
             "this is abstract 444".to_string(),
             "Korea".to_string(),
             "docid444".to_string(),
@@ -40,6 +44,7 @@ async fn test_vectordb_insert_search() -> Result<()> {
             "this is kind".to_string(),
         ),
         PatentRecord::new(
+            "title 555".to_string(),
             "this is abstract 555".to_string(),
             "Korea".to_string(),
             "docid555".to_string(),
@@ -78,13 +83,7 @@ async fn test_vectordb_insert_search() -> Result<()> {
     println!("count: {:?}", count);
 
     let search_res = vectordb
-        .search(
-            collection_name,
-            &vec![0.1, 0.1, 0.1, 0.1, 0.1],
-            1,
-            Some(0.8f32),
-            None,
-            )
+        .search(collection_name, &vec![0.1, 0.1, 0.1, 0.1, 0.1], 1, Some(0.8f32), None)
         .await?;
     println!("{:?}", search_res);
     Ok(())

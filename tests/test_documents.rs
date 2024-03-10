@@ -72,6 +72,7 @@ fn test_find_last_thursday() {
 fn test_get_abstracts_from_patents() {
     let patents = vec![
         PatentRecord {
+            title: "title 1".to_string(),
             abstracts: "Abstract 1".to_string(),
             country: "Country 1".to_string(),
             docid: "DocID 1".to_string(),
@@ -79,6 +80,7 @@ fn test_get_abstracts_from_patents() {
             kind: "Kind 1".to_string(),
         },
         PatentRecord {
+            title: "title 2".to_string(),
             abstracts: "Abstract 2".to_string(),
             country: "Country 2".to_string(),
             docid: "DocID 2".to_string(),
@@ -86,6 +88,7 @@ fn test_get_abstracts_from_patents() {
             kind: "Kind 2".to_string(),
         },
         PatentRecord {
+            title: "title 3".to_string(),
             abstracts: "Abstract 3".to_string(),
             country: "Country 3".to_string(),
             docid: "DocID 3".to_string(),
