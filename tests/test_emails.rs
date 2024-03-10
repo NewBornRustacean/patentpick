@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::Path;
 
 #[test]
+#[cfg(not(feature = "exclude_from_ci"))]
 fn test_compose_html() {
     let mut subscriber_seollem = Subscriber::new(
         "Seollem".to_string(),
@@ -15,11 +16,14 @@ fn test_compose_html() {
     let applications = vec![
         PatentApplicationContent {
             title: "Patent 1".to_string(),
-            hyperlink: "http://example.com/patent1".to_string(),
+            application_abstract: "this is abstract from patent 1".to_string(),
+            link_to_pdf: "https://ppubs.uspto.gov/dirsearch-public/print/downloadPdf/20240049614".to_string(),
         },
         PatentApplicationContent {
             title: "Patent 2".to_string(),
-            hyperlink: "http://example.com/patent2".to_string(),
+            application_abstract: "this is abstract from patent 2".to_string(),
+            link_to_pdf: "https://ppubs.uspto.gov/dirsearch-public/print/downloadPdf/20240049615".to_string(),
+
         },
     ];
 

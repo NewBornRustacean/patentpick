@@ -10,7 +10,6 @@ pub struct Log {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Server {
-    pub qdrant_url: String,
     pub uspto_url: String,
     pub uspto_year: String,
 }
@@ -23,10 +22,17 @@ pub struct LocalPath {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct VectorDataBase {
+    pub qdrant_url: String,
+    pub vector_dim: u64,
+    pub collection_name: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub server: Server,
     pub localpath: LocalPath,
-    pub log: Log,
+    pub vectordb: VectorDataBase,
 }
 
 impl Settings {

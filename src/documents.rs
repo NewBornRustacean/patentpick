@@ -19,6 +19,7 @@ use zip::read::ZipArchive;
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct PatentRecord {
+    pub title: String,
     pub abstracts: String,
     pub country: String,
     pub docid: String,
@@ -27,8 +28,16 @@ pub struct PatentRecord {
 }
 
 impl PatentRecord {
-    pub fn new(abstracts: String, country: String, docid: String, publication_date: String, kind: String) -> Self {
+    pub fn new(
+        title: String,
+        abstracts: String,
+        country: String,
+        docid: String,
+        publication_date: String,
+        kind: String,
+    ) -> Self {
         PatentRecord {
+            title,
             abstracts,
             country,
             docid,
@@ -42,6 +51,7 @@ impl PatentRecord {
             & !self.docid.is_empty()
             & !self.publication_date.is_empty()
             & !self.kind.is_empty()
+            & !self.title.is_empty()
         {
             true
         } else {
@@ -105,6 +115,16 @@ pub fn parse_xml(path_to_ipa: PathBuf) -> Result<Vec<PatentRecord>> {
                             patent_record.as_mut().unwrap().publication_date =
                                 country_docid_kind.get(2).unwrap().to_string();
                             patent_record.as_mut().unwrap().kind = country_docid_kind.get(3).unwrap().to_string();
+                        }
+                    },
+
+                    b"invention-title" => {
+                        let title_bytes = read_to_end_into_buffer(&mut reader, &e, &mut junk_buf).unwrap();
+                        let title_str = std::str::from_utf8(&title_bytes).unwrap();
+                        let title = remove_tags(title_str, " ");
+
+                        if patent_record.is_some() {
+                            patent_record.as_mut().unwrap().title = title.to_string();
                         }
                     },
                     _ => (),

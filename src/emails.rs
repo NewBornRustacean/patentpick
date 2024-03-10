@@ -17,12 +17,17 @@ pub enum EmailError {
 }
 pub struct PatentApplicationContent {
     pub title: String,
-    pub hyperlink: String,
+    pub application_abstract: String,
+    pub link_to_pdf: String,
 }
 
 impl PatentApplicationContent {
-    pub fn new(title: String, hyperlink: String) -> Self {
-        Self { title, hyperlink }
+    pub fn new(title: String, application_abstract: String, link_to_pdf:String) -> Self {
+        Self {
+            title,
+            application_abstract,
+            link_to_pdf
+        }
     }
 }
 
@@ -62,8 +67,9 @@ impl Subscriber {
                         p { "Dear " (self.name) ", here is a list of patent applications that you might be interested in. " }
                         @for application in applications {
                             p {
-                                a href=(application.hyperlink.clone()) { (application.title.clone()) }
+                                a href=(application.link_to_pdf.clone()) { (application.title.clone()) }
                             }
+                            p { (application.application_abstract.clone()) }
                         }
                     }
                 }

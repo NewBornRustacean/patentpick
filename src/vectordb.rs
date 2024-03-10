@@ -4,7 +4,7 @@ use qdrant_client::{
     prelude::{Payload, QdrantClient},
     qdrant::{
         vectors_config::Config, with_payload_selector::SelectorOptions, CreateCollection, Distance, Filter,
-        PointStruct, ScoredPoint, SearchPoints, VectorParams, VectorsConfig, WithPayloadSelector, WithVectorsSelector
+        PointStruct, ScoredPoint, SearchPoints, VectorParams, VectorsConfig, WithPayloadSelector, WithVectorsSelector,
     },
 };
 use serde_json::json;
@@ -75,7 +75,6 @@ impl VectorDB {
         score_threshold: Option<f32>,
         filter: Option<Filter>,
     ) -> Result<SearchResponse> {
-
         let search_points = SearchPoints {
             collection_name: collection_name.into(),
             vector: embedding.to_vec(),
