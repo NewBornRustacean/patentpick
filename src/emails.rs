@@ -8,7 +8,13 @@ use lettre::{
     Message, SmtpTransport, Transport,
 };
 use maud::html;
+use qdrant_client::client::Payload;
+use qdrant_client::qdrant::ScoredPoint;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use url::Url;
+
+use crate::documents::PatentRecord;
 
 #[derive(Debug)]
 pub enum EmailError {
@@ -22,11 +28,27 @@ pub struct PatentApplicationContent {
 }
 
 impl PatentApplicationContent {
-    pub fn new(title: String, application_abstract: String, link_to_pdf:String) -> Self {
+    pub fn new(title: String, application_abstract: String, link_to_pdf: String) -> Self {
         Self {
             title,
             application_abstract,
-            link_to_pdf
+            link_to_pdf,
+        }
+    }
+
+    pub fn from_payload(payload: &Payload, uspto_pdf_url: &str) -> Self {
+        let serialized = serde_json::to_string(&payload).unwrap();
+
+        let patent_record: PatentRecord = serde_json::from_str(&serialized).unwrap();
+        let title = patent_record.title;
+        let application_abstract = patent_record.abstracts;
+        let link_to_pdf = Url::parse(uspto_pdf_url).unwrap();
+        let link_to_pdf = link_to_pdf.join(patent_record.docid.as_str()).unwrap().to_string();
+
+        Self {
+            title,
+            application_abstract,
+            link_to_pdf,
         }
     }
 }
@@ -36,6 +58,8 @@ pub struct Subscriber {
     pub name: String,
     pub email: String,
     pub search_queries: Vec<String>,
+
+    #[serde(skip_deserializing, default)]
     pub html_to_send: Option<String>,
 }
 
@@ -131,4 +155,16 @@ pub fn get_subscribers(json_path: PathBuf) -> Result<Vec<Subscriber>, Error> {
     let subscribers: Vec<Subscriber> = serde_json::from_reader(file)?;
 
     Ok(subscribers)
+}
+
+pub fn get_patent_application_contents(
+    scored_points: &[ScoredPoint],
+    uspto_pdf_url: &str,
+) -> Result<Vec<PatentApplicationContent>> {
+    let mut patent_application_contents: Vec<PatentApplicationContent> = Vec::new();
+    for scored_point in scored_points {
+        let payload = Payload::new_from_hashmap(scored_point.payload.clone());
+        patent_application_contents.push(PatentApplicationContent::from_payload(&payload, uspto_pdf_url))
+    }
+    Ok(patent_application_contents)
 }

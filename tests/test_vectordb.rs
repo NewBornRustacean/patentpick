@@ -60,7 +60,6 @@ async fn test_vectordb_insert_search() -> Result<()> {
         vec![0.4, 0.4, 0.4, 0.4, 0.5],
         vec![0.5, 0.5, 0.5, 0.5, 0.5],
     ];
-
     if vectordb.client.has_collection(collection_name).await? {
         vectordb.client.delete_collection(collection_name).await?;
     }
@@ -70,11 +69,14 @@ async fn test_vectordb_insert_search() -> Result<()> {
     vectordb
         .upsert_embedding_batch(collection_name, &patent_records, &embeddings, 2)
         .await?;
+    let filter = Some(Filter::must([
+        Condition::matches("publication_date", "20240309".to_string()),
+    ]));
     let count = vectordb
         .client
         .count(&CountPoints {
             collection_name: collection_name.to_string(),
-            filter: None,
+            filter: filter,
             exact: None,
             read_consistency: None,
             shard_key_selector: None,
@@ -85,6 +87,6 @@ async fn test_vectordb_insert_search() -> Result<()> {
     let search_res = vectordb
         .search(collection_name, &vec![0.1, 0.1, 0.1, 0.1, 0.1], 1, Some(0.8f32), None)
         .await?;
-    println!("{:?}", search_res);
+    println!("{:?}", search_res.result);
     Ok(())
 }

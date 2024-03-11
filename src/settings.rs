@@ -11,6 +11,7 @@ pub struct Log {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Server {
     pub uspto_url: String,
+    pub uspto_pdf_url: String,
     pub uspto_year: String,
 }
 
@@ -26,6 +27,7 @@ pub struct VectorDataBase {
     pub qdrant_url: String,
     pub vector_dim: u64,
     pub collection_name: String,
+    pub upload_chunk_size: usize,
 }
 
 #[derive(Debug, Deserialize, Clone)]
