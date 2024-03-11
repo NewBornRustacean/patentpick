@@ -1,7 +1,10 @@
 use patentpick::emails::{get_subscribers, PatentApplicationContent, Subscriber};
+use qdrant_client::prelude::Payload;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
+
+use serde_json::json;
 
 #[test]
 #[cfg(not(feature = "exclude_from_ci"))]
@@ -23,7 +26,6 @@ fn test_compose_html() {
             title: "Patent 2".to_string(),
             application_abstract: "this is abstract from patent 2".to_string(),
             link_to_pdf: "https://ppubs.uspto.gov/dirsearch-public/print/downloadPdf/20240049615".to_string(),
-
         },
     ];
 
@@ -41,4 +43,25 @@ fn test_get_subscribers() {
     for subs in subscribers {
         println!("{:?}", subs);
     }
+}
+
+#[test]
+fn test_from_payload() {
+    let payload: Payload = json!({
+        "title": "title 111",
+        "abstracts": "this is abstract 111",
+        "country": "Korean",
+        "docid": "docid111",
+        "publication_date": "240311",
+        "kind": "A1",
+    })
+    .try_into()
+    .unwrap();
+    let uspto_pdf_url = "https://ppubs.uspto.gov/dirsearch-public/print/downloadPdf/";
+
+    let content = PatentApplicationContent::from_payload(&payload, uspto_pdf_url);
+
+    assert_eq!(content.title, "title 111");
+    assert_eq!(content.application_abstract, "this is abstract 111");
+    assert_eq!(content.link_to_pdf, "https://ppubs.uspto.gov/dirsearch-public/print/downloadPdf/docid111");
 }

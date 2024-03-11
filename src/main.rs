@@ -3,14 +3,17 @@ mod emails;
 mod settings;
 mod vectordb;
 
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::path::Path;
 
 use anyhow::{Error, Result};
 use chrono::Utc;
 use indicatif::ProgressBar;
-use mpnet_rs::mpnet::{get_embeddings_parallel, load_model};
+use mpnet_rs::mpnet::{get_embeddings, get_embeddings_parallel, load_model, normalize_l2};
+use qdrant_client::qdrant::{Condition, Filter};
 use tokio;
 
+use crate::emails::get_patent_application_contents;
 use documents::{download_weekly_fulltext, get_abstracts_from_patents, parse_xml};
 use emails::{PatentApplicationContent, Subscriber};
 use settings::Settings;
@@ -23,6 +26,8 @@ async fn main() -> Result<(), Error> {
     let settings = Settings::new("src/config.toml").unwrap();
     let (model, mut tokenizer, pooler) = load_model(settings.localpath.checkpoints).unwrap();
     let parallel_embedding_chunksize: usize = 20;
+    let search_limit: u64 = 10;
+    let search_threshold = 0.8f32;
 
     // Progress reporting setup
     let progress_bar = ProgressBar::new(3); // 3 steps
@@ -33,62 +38,70 @@ async fn main() -> Result<(), Error> {
             .progress_chars("=> "),
     );
 
-    progress_bar.set_message("Downloading XML...");
+    progress_bar.set_message("1. Downloading XML...");
     let xmlfile_path = download_weekly_fulltext(
         &settings.server.uspto_url, &settings.server.uspto_year, &settings.localpath.documents, &today_utc,
     )
     .await?;
     progress_bar.inc(1);
 
-    progress_bar.set_message("Parsing XML...");
+    progress_bar.set_message("2. Parsing XML...");
     let patents = parse_xml(xmlfile_path)?;
     progress_bar.inc(1);
 
-    // progress_bar.set_message("Getting embeddings...");
-    // let abstracts = get_abstracts_from_patents(&patents)?;
-    // let _embeddings = get_embeddings_parallel(&model, &tokenizer, Some(&pooler), &abstracts, parallel_embedding_chunksize)?;
-    // let embeddings = _embeddings.to_vec2::<f32>().unwrap();
-    // progress_bar.inc(1);
-    //
-    // progress_bar.set_message("Upload embeddings to vectorDB...");
-    // let mut vectordb = VectorDB::new(settings..as_ref());
-    // vectordb.client.collection_exists()
-    // progress_bar.inc(1);
+    progress_bar.set_message("3. Getting embeddings...");
+    let abstracts = get_abstracts_from_patents(&patents)?;
+    let _embeddings =
+        get_embeddings_parallel(&model, &tokenizer, Some(&pooler), &abstracts, parallel_embedding_chunksize)?;
+    let l2norm_embeds = normalize_l2(&_embeddings).unwrap();
+    let embeddings = l2norm_embeds.to_vec2::<f32>().unwrap();
+    progress_bar.inc(1);
 
-    // let mut subscriber_seom =Subscriber::new(
-    //     "SeomKim".to_string(),
-    //     "huiseomkim@gmail.com".to_string(),
-    //     vec!["new chemical that targets glucagon like peptide-1".to_string()],
-    //     None
-    // );
-    //
-    // let mut mock_results = Vec::new();
-    // mock_results.push(emails::PatentApplicationContent::new(
-    //     "Rapid transformation of monocot leaf explants".to_string(),
-    //     "https://patents.google.com/patent/US20240002870A1/en?oq=US+20240002870+A1".to_string())
-    // );
-    //
-    // mock_results.push(emails::PatentApplicationContent::new(
-    //     "PYRIDO[2,3-D]PYRIMIDIN-4-AMINES AS SOS1 INHIBITORS".to_string(),
-    //     "https://patents.google.com/patent/US20230357239A1/en?oq=US+20230357239+A1".to_string())
-    // );
-    //
-    // mock_results.push(emails::PatentApplicationContent::new(
-    //     "PRIME EDITING GUIDE RNAS, COMPOSITIONS THEREOF, AND METHODS OF USING THE SAME".to_string(),
-    //     "https://patents.google.com/patent/US20230357766A1/en?oq=US+20230357766+A1".to_string())
-    // );
-    //
-    // mock_results.push(emails::PatentApplicationContent::new(
-    //     "IMAGE SENSOR".to_string(),
-    //     "https://patents.google.com/patent/US20230352510A1/en?oq=US+20230352510+A1".to_string())
-    // );
-    //
-    // mock_results.push(emails::PatentApplicationContent::new(
-    //     "Expressing Multicast Groups Using Weave Traits".to_string(),
-    //     "https://patents.google.com/patent/US20230336371A1/en?oq=US+20230336371+A1".to_string())
-    // );
-    //
-    // subscriber_seom.compose_html(&mock_results).send_email().unwrap();
+    progress_bar.set_message("4. Uploading embeddings to vectorDB...");
+    let collection_name = settings.vectordb.collection_name.as_str();
+    let mut vectordb = VectorDB::new(settings.vectordb.qdrant_url.as_str());
+    if !vectordb.client.has_collection(collection_name.to_string()).await? {
+        vectordb
+            .create_collection(collection_name, settings.vectordb.vector_dim)
+            .await?;
+    }
+    vectordb
+        .upsert_embedding_batch(collection_name, &patents, &embeddings, settings.vectordb.upload_chunk_size)
+        .await?;
+    progress_bar.inc(1);
+
+    progress_bar.set_message("5. Sending emails...");
+    let json_str =
+        fs::read_to_string(Path::new(settings.localpath.resources.as_str()).join("subscribers/subscribers.json"))?;
+    let mut subscribers: Vec<Subscriber> = serde_json::from_str(json_str.as_str())?;
+
+
+    for subscriber in subscribers.iter_mut() {
+        let _query_embedding = get_embeddings(
+            &model,
+            &tokenizer,
+            Some(&pooler),
+            &subscriber.search_queries.clone().iter().map(|s| s.as_str()).collect(),
+        )?;
+        let normalizes_query = normalize_l2(&_query_embedding).unwrap();
+
+        // assume that there is only one search query for each subscriber
+        let query_to_vec = normalizes_query.to_vec2::<f32>()?;
+
+        let publication_date = patents.get(0).unwrap().publication_date.clone();
+        let filter = Some(Filter::must([
+            Condition::matches("publication_date", publication_date),
+        ]));
+
+        let result = vectordb
+            .search(collection_name, query_to_vec.get(0).unwrap(), search_limit, Some(search_threshold), filter)
+            .await?;
+
+        let patent_application_contents =
+            get_patent_application_contents(&result.result, &settings.server.uspto_pdf_url)?;
+
+        subscriber.compose_html(&patent_application_contents).send_email().unwrap();
+    }
 
     progress_bar.finish_with_message("All steps completed successfully.");
     Ok(())
