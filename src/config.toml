@@ -1,0 +1,18 @@
+[server]
+uspto_url = "https://bulkdata.uspto.gov/data/patent/application/redbook/fulltext/"
+uspto_pdf_url = "https://ppubs.uspto.gov/dirsearch-public/print/downloadPdf/"
+uspto_year = "2024"
+
+[localpath]
+resources = "resources"
+documents = "resources/documents"
+checkpoints = "resources/AI-Growth-Lab_PatentSBERTa"
+
+[vectordb]
+qdrant_url = "http://localhost:6334"
+vector_dim = 768
+collection_name = "patents"
+upload_chunk_size = 1000
+
+[log]
+level = "info"
